@@ -1,13 +1,21 @@
 {
   "expo": {
-    "name": "friendly",
+    "name": "Friendly",
     "slug": "friendly",
+    "projectId": "friendly",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/screen1.png",
+    "platforms": ["ios", "android", "web"],
+    "description": "A friendly app",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/screen1.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "ios": {
       "supportsTablet": true
     },
@@ -19,18 +27,26 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static",
+      "output": "server",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      "expo-router",
+      [
+        "expo-router",
+        {
+          "origin": "https://google.com/"
+        }
+      ],
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#232323",
+          "image": "./assets/images/screen1.png",
+          "dark": {
+            "image": "./assets/images/screen1.png",
+            "backgroundColor": "#000000"
+          },
+          "imageWidth": 200
         }
       ]
     ],
