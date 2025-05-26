@@ -83,17 +83,18 @@ const Layout = () => {
 
       <Tabs.Screen
         name="chat"
-        listeners={{
-          tabPress: (e) => {
-            // Prevent default behavior
-            e.preventDefault();
-            // Navigate to the chat screen
-            router.push("/(root)/(tabs)/chat");
-          },
-        }}
+        // listeners={{
+        //   tabPress: (e) => {
+        //     // Prevent default behavior
+        //     e.preventDefault();
+        //     // Navigate to the chat screen
+        //     router.push("/(root)/(tabs)/chat");
+        //   },
+        // }}
         options={{
           title: "Chat",
           headerShown: false,
+          tabBarStyle: { display: "none" },
           tabBarButton: (props) => (
             <CustomTabButton
               {...props}

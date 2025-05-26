@@ -1,18 +1,18 @@
 {
   "expo": {
-    "name": "Friendly",
-    "slug": "friendly",
-    "projectId": "friendly",
+    "name": "Nomi",
+    "slug": "nomi",
+    "projectId": "nomi",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/screen1.png",
+    "icon": "./assets/images/nomi.png",
     "platforms": ["ios", "android", "web"],
-    "description": "A friendly app",
+    "description": "Your gentle companion, always here to talk.",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/screen1.png",
+      "image": "./assets/images/screen2.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },

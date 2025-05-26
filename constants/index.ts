@@ -1,4 +1,4 @@
-// import screen1 from "@/assets/images/screen1.png";
+import screen1 from "@/assets/images/screen1.png";
 import screen2 from "@/assets/images/screen2.png";
 import screen3 from "@/assets/images/screen3.png";
 import screen4 from "@/assets/images/screen4.png";
@@ -39,9 +39,10 @@ import mood from "@/assets/icons/mood.png";
 import add from "@/assets/icons/add.png";
 import stats from "@/assets/icons/stats.png";
 import medication from "@/assets/icons/medication.png";
+import nomi from "@/assets/images/nomi.png";
 
 export const images = {
-  // screen1,
+  screen1,
   screen2,
   screen3,
   screen4,
@@ -52,6 +53,7 @@ export const images = {
   check,
   noResult,
   message,
+  nomi,
 };
 
 export const icons = {
