@@ -1,402 +1,652 @@
-import React, { useState, useEffect, useCallback } from "react";
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Dimensions,
+  Animated,
+  RefreshControl,
+  FlatList,
+  type ListRenderItem,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useUser } from "@clerk/clerk-expo";
-import { AppState, StyleSheet } from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
-import { Text, View, FlatList, RefreshControl } from "react-native";
-import { fontSizes } from "@/constants/fontSizes";
-import ScreenWrapper from "@/components/ScreenWrapper";
-import {
-  getMedications,
-  Medication,
-  getTodaysDoses,
-  DoseHistory,
-} from "@/utils/storage";
-import {
-  registerForPushNotificationsAsync,
-  scheduleMedicationReminder,
-} from "@/utils/notifications";
-import NotificationModal from "@/components/NotificationModal";
-import HomeHeader from "@/components/HomeHeader";
-import MoodTracker from "@/components/MoodTracker";
-import DailyTip from "@/components/DailyTip";
-import { useMood } from "@/contexts/MoodContext";
+import { useRouter } from "expo-router";
+import MaskedView from "@react-native-masked-view/masked-view";
+import type { MoodEntry } from "@/types/mood";
+import { MoodStorage } from "@/lib/mood-storage";
+import { MoodAnalytics } from "@/lib/mood-analytics";
 
-const getGreeting = () => {
-  const currentHour = new Date().getHours();
-  if (currentHour < 12) {
-    return "Good morning";
-  } else if (currentHour < 18) {
-    return "Good afternoon";
-  } else {
-    return "Good evening";
-  }
-};
+const { width, height } = Dimensions.get("window");
 
-const getCurrentDate = (): string => {
-  const today = new Date();
-  const options: Intl.DateTimeFormatOptions = {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  };
-  return today.toLocaleDateString("en-US", options);
-};
-
-type MoodItem = {
+interface HomeSection {
   id: string;
-  mood: string;
+  type:
+    | "welcome"
+    | "mood-check"
+    | "quick-stats"
+    | "recent-moods"
+    | "quick-actions"
+    | "insights";
+  data?: any;
+}
+
+interface QuickAction {
+  id: string;
+  title: string;
+  subtitle: string;
   icon: string;
   color: string;
-};
+  route: string;
+}
 
-const moodData: MoodItem[] = [
-  { id: "1", mood: "Happy", icon: "😊", color: "#FFD700" },
-  { id: "2", mood: "Calm", icon: "😌", color: "#87CEEB" },
-  { id: "3", mood: "Stressed", icon: "😟", color: "#FF6347" },
-  { id: "4", mood: "Excited", icon: "😄", color: "#FFA500" },
-  { id: "5", mood: "Relaxed", icon: "😎", color: "#32CD32" },
-  { id: "6", mood: "Sad", icon: "😢", color: "#1E90FF" },
-  { id: "7", mood: "Angry", icon: "😡", color: "#FF4500" },
-  { id: "8", mood: "Loved", icon: "❤️", color: "#FF69B4" },
+const quickActions: QuickAction[] = [
+  {
+    id: "chat",
+    title: "Chat with Nomi",
+    subtitle: "Start a conversation",
+    icon: "chatbubble-ellipses",
+    color: "#3b82f6",
+    route: "/chat",
+  },
+  {
+    id: "voice",
+    title: "Voice Chat",
+    subtitle: "Talk naturally",
+    icon: "mic",
+    color: "#8b5cf6",
+    route: "/chat",
+  },
+  {
+    id: "mood",
+    title: "Track Mood",
+    subtitle: "How are you feeling?",
+    icon: "heart",
+    color: "#ec4899",
+    route: "/mood",
+  },
+  {
+    id: "insights",
+    title: "View Insights",
+    subtitle: "Your progress",
+    icon: "analytics",
+    color: "#10b981",
+    route: "/mood",
+  },
 ];
 
-const fetchDailyTip = async (): Promise<string> => {
-  try {
-    const response = await fetch("https://zenquotes.io/api/random");
-    const data = await response.json();
-    return data[0]?.q || "Stay positive and keep moving forward!";
-  } catch (error) {
-    console.error("Failed to fetch daily tip:", error);
-    return "Stay positive and keep moving forward!";
-  }
-};
-
-const styles = StyleSheet.create({
-  sectionContainer: {
-    padding: 24,
-    backgroundColor: "#FFF", // Neutral background
-    borderRadius: 24,
-    marginBottom: 24,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
-  },
-  moodAccent: {
-    borderLeftWidth: 6,
-    paddingLeft: 18,
-  },
-  sectionHeader: {
-    color: "#4D2C1D",
-    fontFamily: "JakartaBold",
-    fontSize: fontSizes.subheading + 2,
-    marginBottom: 8,
-  },
-  sectionBody: {
-    color: "#4D2C1D",
-    marginTop: 10,
-    fontSize: fontSizes.body,
-  },
-  errorBox: {
-    padding: 16,
-    backgroundColor: "#ffe5e5",
-    borderRadius: 8,
-    margin: 16,
-  },
-  errorText: {
-    color: "#b00020",
-  },
-  streakBarContainer: {
-    marginBottom: 16,
-    alignItems: "center",
-  },
-  streakLabel: {
-    fontSize: 14,
-    color: "#4D2C1D",
-    marginBottom: 4,
-    fontFamily: "JakartaMedium",
-  },
-  streakBar: {
-    width: "80%",
-    height: 12,
-    backgroundColor: "#FFE5B4",
-    borderRadius: 8,
-    overflow: "hidden",
-  },
-  streakFill: {
-    height: "100%",
-    backgroundColor: "#FFAA4D",
-    borderRadius: 8,
-  },
-});
-
-const STREAK_TOTAL = 7; // e.g., 7 days streak
-
-// --- ADD THIS FUNCTION ---
-type SaveMoodArgs = {
-  userId: string;
-  mood: string;
-  label: string;
-  color: string;
-};
-
-async function saveMoodToDatabase({
-  userId,
-  mood,
-  label,
-  color,
-}: SaveMoodArgs) {
-  try {
-    const res = await fetch("/api/mood", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, mood, label, color }),
-    });
-    if (!res.ok) {
-      throw new Error("Failed to save mood");
+const GradientText = ({ text, style }: { text: string; style?: any }) => (
+  <MaskedView
+    maskElement={
+      <Text style={[{ fontSize: 28, fontWeight: "bold" }, style]}>{text}</Text>
     }
-    return await res.json();
-  } catch (error) {
-    console.error("Error saving mood:", error);
-  }
-}
-// --- END ADD ---
+  >
+    <LinearGradient
+      colors={["#3b82f6", "#ec4899", "#8b5cf6"]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 0 }}
+    >
+      <Text
+        style={[
+          { fontSize: 28, fontWeight: "bold", color: "transparent" },
+          style,
+        ]}
+      >
+        {text}
+      </Text>
+    </LinearGradient>
+  </MaskedView>
+);
 
-const Home = () => {
+export default function HomeScreen() {
   const { user } = useUser();
-  const greeting = getGreeting();
-  const currentDate = getCurrentDate();
-
-  const [dailyTip, setDailyTip] = useState<string>("");
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [medications, setMedications] = useState<Medication[]>([]);
-  const [todaysMedications, setTodaysMedications] = useState<Medication[]>([]);
-  const [completedDoses, setCompletedDoses] = useState(0);
-  const [doseHistory, setDoseHistory] = useState<DoseHistory[]>([]);
-  const [medicationError, setMedicationError] = useState<string | null>(null);
-  const [selectedMoodId, setSelectedMoodId] = useState<string | null>(null);
-  const [streak, setStreak] = useState(3); // Example: 3-day streak
+  const [todaysMood, setTodaysMood] = useState<MoodEntry | null>(null);
+  const [recentMoods, setRecentMoods] = useState<MoodEntry[]>([]);
+  const [weeklyStats, setWeeklyStats] = useState<any>(null);
+  const [sections, setSections] = useState<HomeSection[]>([]);
 
-  const { selectedMood, setSelectedMood } = useMood();
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchDailyTip().then(setDailyTip);
-    }, [])
-  );
-
-  const loadMedications = useCallback(async () => {
-    try {
-      setMedicationError(null);
-      const [allMedications, todaysDoses] = await Promise.all([
-        getMedications(),
-        getTodaysDoses(),
-      ]);
-      setDoseHistory(todaysDoses);
-      setMedications(allMedications);
-
-      const today = new Date();
-      const todayMeds = allMedications.filter((med) => {
-        const startDate = new Date(med.startDate);
-        const durationDays = parseInt(med.duration.split(" ")[0]);
-        if (
-          durationDays === -1 ||
-          (today >= startDate &&
-            today <=
-              new Date(
-                startDate.getTime() + durationDays * 24 * 60 * 60 * 1000
-              ))
-        ) {
-          return true;
-        }
-        return false;
-      });
-
-      setTodaysMedications(todayMeds);
-
-      const completed = todaysDoses.filter((dose) => dose.taken).length;
-      setCompletedDoses(completed);
-    } catch (error) {
-      setMedicationError("Failed to load medications. Please try again.");
-      console.error("Error loading medications:", error);
-    }
-  }, []);
-
-  const setupNotifications = async () => {
-    try {
-      const token = await registerForPushNotificationsAsync();
-      if (!token) {
-        console.log("Failed to get push notification token");
-        return;
-      }
-      const medications = await getMedications();
-      for (const medication of medications) {
-        if (medication.reminderEnabled) {
-          await scheduleMedicationReminder(medication);
-        }
-      }
-    } catch (error) {
-      console.error("Error setting up notifications:", error);
-    }
-  };
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
-    loadMedications();
-    setupNotifications();
-    const subscription = AppState.addEventListener("change", (nextAppState) => {
-      if (nextAppState === "active") {
-        loadMedications();
-      }
-    });
-    return () => {
-      subscription.remove();
-    };
+    loadData();
+    startAnimations();
   }, []);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 2000);
+  const startAnimations = () => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+    ]).start();
   };
 
-  // --- UPDATE THIS FUNCTION ---
-  const handleSelectMood = useCallback(
-    async (id: string) => {
-      setSelectedMoodId(id);
-      const mood = moodData.find((m) => m.id === id);
-      if (mood && user) {
-        setSelectedMood({
-          mood: mood.icon,
-          label: mood.mood,
-          color: mood.color,
-        });
-        await saveMoodToDatabase({
-          userId: user.id,
-          mood: mood.icon,
-          label: mood.mood,
-          color: mood.color,
-        });
-      }
-    },
-    [setSelectedMood, setSelectedMoodId, moodData, user]
+  const loadData = async () => {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const mood = await MoodStorage.getMoodEntryForDate(today);
+      setTodaysMood(mood);
+
+      // Get recent moods (last 7 days)
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - 7);
+      const weekStartStr = weekStart.toISOString().split("T")[0];
+      const recent = await MoodStorage.getMoodEntriesForDateRange(
+        weekStartStr,
+        today
+      );
+      setRecentMoods(recent.slice(0, 5));
+
+      // Get weekly stats
+      const stats = await MoodAnalytics.getWeeklyStats(weekStartStr);
+      setWeeklyStats(stats);
+
+      // Build sections
+      const newSections: HomeSection[] = [
+        { id: "welcome", type: "welcome" },
+        { id: "mood-check", type: "mood-check", data: mood },
+        { id: "quick-actions", type: "quick-actions" },
+        { id: "quick-stats", type: "quick-stats", data: stats },
+        { id: "recent-moods", type: "recent-moods", data: recent.slice(0, 3) },
+        { id: "insights", type: "insights", data: { mood, stats } },
+      ];
+      setSections(newSections);
+    } catch (error) {
+      console.error("Error loading home data:", error);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  };
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 17) return "Good afternoon";
+    return "Good evening";
+  };
+
+  const renderWelcomeSection = () => (
+    <Animated.View
+      style={{
+        opacity: fadeAnim,
+        transform: [{ translateY: slideAnim }],
+        padding: 20,
+        alignItems: "center",
+      }}
+    >
+      <GradientText
+        text={`${getGreeting()}, ${user?.firstName || "there"}! 👋`}
+        style={{ fontSize: 24 }}
+      />
+      <Text
+        style={{
+          color: "#9ca3af",
+          fontSize: 16,
+          textAlign: "center",
+          marginTop: 8,
+          lineHeight: 22,
+        }}
+      >
+        Welcome back to your wellness journey.{"\n"}How can I support you today?
+      </Text>
+    </Animated.View>
   );
-  // --- END UPDATE ---
 
-  const sections = [
-    { type: "moodTracker" },
-    { type: "dailyTip" },
-    { type: "additionalContent" },
-    { type: "footer" },
-  ];
-
-  const renderSection = useCallback(
-    ({ item }: { item: { type: string } }) => {
-      if (item.type === "moodTracker") {
-        return (
-          <View
-            style={[
-              styles.sectionContainer,
-              selectedMood && {
-                ...styles.moodAccent,
-                borderLeftColor: selectedMood.color,
-              },
-            ]}
-          >
-            {/* Streak/Progress Bar */}
-            <View style={styles.streakBarContainer}>
-              <Text style={styles.streakLabel}>{streak} day streak!</Text>
-              <View style={styles.streakBar}>
-                <View
-                  style={[
-                    styles.streakFill,
-                    { width: `${(streak / STREAK_TOTAL) * 100}%` },
-                  ]}
-                />
+  const renderMoodCheckSection = () => (
+    <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+      <LinearGradient
+        colors={
+          todaysMood
+            ? [todaysMood.mood.color + "20", todaysMood.mood.color + "10"]
+            : ["#374151", "#4b5563"]
+        }
+        style={{
+          borderRadius: 20,
+          padding: 20,
+          borderWidth: 1,
+          borderColor: todaysMood ? todaysMood.mood.color + "30" : "#4b5563",
+        }}
+      >
+        {todaysMood ? (
+          <View>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ fontSize: 32, marginRight: 12 }}>
+                {todaysMood.mood.emoji}
+              </Text>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{ color: "#fff", fontSize: 18, fontWeight: "bold" }}
+                >
+                  Today's Mood
+                </Text>
+                <Text style={{ color: todaysMood.mood.color, fontSize: 14 }}>
+                  {todaysMood.mood.name} • {todaysMood.intensity}/5
+                </Text>
               </View>
+              <TouchableOpacity
+                onPress={() => router.push("/mood")}
+                style={{
+                  backgroundColor: todaysMood.mood.color + "30",
+                  borderRadius: 15,
+                  padding: 8,
+                }}
+              >
+                <Ionicons
+                  name="create"
+                  size={16}
+                  color={todaysMood.mood.color}
+                />
+              </TouchableOpacity>
             </View>
-            {/* Mood Tracker */}
-            <MoodTracker
-              moodData={moodData}
-              selectedMoodId={selectedMoodId}
-              onSelectMood={handleSelectMood}
-              largeIcons
-            />
+            {todaysMood.note && (
+              <Text
+                style={{ color: "#e5e7eb", fontSize: 14, fontStyle: "italic" }}
+              >
+                "{todaysMood.note}"
+              </Text>
+            )}
           </View>
-        );
-      } else if (item.type === "dailyTip") {
-        return (
-          <View style={styles.sectionContainer}>
-            <DailyTip tip={dailyTip} />
-          </View>
-        );
-      } else if (item.type === "additionalContent") {
-        return (
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionHeader}>Additional Content</Text>
-            <Text style={styles.sectionBody}>
-              This is where you can add more content, such as articles, tips, or
-              any other information you want to share with the user.
-            </Text>
-          </View>
-        );
-      } else if (item.type === "footer") {
-        return (
-          <View
-            style={[styles.sectionContainer, { backgroundColor: "#FFF9F0" }]}
+        ) : (
+          <TouchableOpacity
+            onPress={() => router.push("/mood")}
+            style={{ alignItems: "center" }}
           >
-            <Text style={styles.sectionHeader}>Footer Section</Text>
-            <Text style={styles.sectionBody}>
-              Privacy Policy | Terms of Service | Support
+            <Text style={{ fontSize: 32, marginBottom: 8 }}>🌈</Text>
+            <Text
+              style={{
+                color: "#fff",
+                fontSize: 18,
+                fontWeight: "bold",
+                marginBottom: 4,
+              }}
+            >
+              How are you feeling today?
             </Text>
-          </View>
-        );
-      }
-      return null;
-    },
-    [dailyTip, selectedMoodId, handleSelectMood, streak, selectedMood]
+            <Text style={{ color: "#9ca3af", fontSize: 14 }}>
+              Tap to track your mood
+            </Text>
+          </TouchableOpacity>
+        )}
+      </LinearGradient>
+    </View>
   );
 
-  // Avatar and notification badge for header
-  const avatarUrl = user?.imageUrl || undefined;
-  const notificationCount = todaysMedications.length - completedDoses;
+  const renderQuickActions = () => (
+    <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+      <Text
+        style={{
+          color: "#fff",
+          fontSize: 18,
+          fontWeight: "bold",
+          marginBottom: 15,
+        }}
+      >
+        Quick Actions
+      </Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+        {quickActions.map((action) => (
+          <TouchableOpacity
+            key={action.id}
+            onPress={() => router.push(action.route as any)}
+            style={{
+              width: (width - 52) / 2,
+              backgroundColor: "#374151",
+              borderRadius: 16,
+              padding: 16,
+              borderWidth: 1,
+              borderColor: action.color + "30",
+            }}
+          >
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: action.color + "20",
+                justifyContent: "center",
+                alignItems: "center",
+                marginBottom: 12,
+              }}
+            >
+              <Ionicons
+                name={action.icon as any}
+                size={20}
+                color={action.color}
+              />
+            </View>
+            <Text
+              style={{
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: "600",
+                marginBottom: 4,
+              }}
+            >
+              {action.title}
+            </Text>
+            <Text style={{ color: "#9ca3af", fontSize: 12 }}>
+              {action.subtitle}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+
+  const renderQuickStats = () => {
+    if (!weeklyStats || weeklyStats.totalEntries === 0) return null;
+
+    return (
+      <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+        <Text
+          style={{
+            color: "#fff",
+            fontSize: 18,
+            fontWeight: "bold",
+            marginBottom: 15,
+          }}
+        >
+          This Week
+        </Text>
+        <View style={{ flexDirection: "row", gap: 12 }}>
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "#374151",
+              borderRadius: 16,
+              padding: 16,
+              alignItems: "center",
+            }}
+          >
+            <Ionicons name="trending-up" size={24} color="#10b981" />
+            <Text
+              style={{
+                color: "#10b981",
+                fontSize: 20,
+                fontWeight: "bold",
+                marginTop: 8,
+              }}
+            >
+              {weeklyStats.averageMood.toFixed(1)}
+            </Text>
+            <Text style={{ color: "#9ca3af", fontSize: 12 }}>Avg Mood</Text>
+          </View>
+
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "#374151",
+              borderRadius: 16,
+              padding: 16,
+              alignItems: "center",
+            }}
+          >
+            <Ionicons name="calendar" size={24} color="#3b82f6" />
+            <Text
+              style={{
+                color: "#3b82f6",
+                fontSize: 20,
+                fontWeight: "bold",
+                marginTop: 8,
+              }}
+            >
+              {weeklyStats.totalEntries}
+            </Text>
+            <Text style={{ color: "#9ca3af", fontSize: 12 }}>Check-ins</Text>
+          </View>
+
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "#374151",
+              borderRadius: 16,
+              padding: 16,
+              alignItems: "center",
+            }}
+          >
+            <Ionicons name="flame" size={24} color="#f59e0b" />
+            <Text
+              style={{
+                color: "#f59e0b",
+                fontSize: 20,
+                fontWeight: "bold",
+                marginTop: 8,
+              }}
+            >
+              {weeklyStats.streak}
+            </Text>
+            <Text style={{ color: "#9ca3af", fontSize: 12 }}>Day Streak</Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const renderRecentMoods = () => {
+    if (recentMoods.length === 0) return null;
+
+    return (
+      <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 15,
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 18, fontWeight: "bold" }}>
+            Recent Moods
+          </Text>
+          <TouchableOpacity onPress={() => router.push("/mood")}>
+            <Text style={{ color: "#3b82f6", fontSize: 14 }}>View All</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          {recentMoods.slice(0, 3).map((mood, index) => (
+            <View
+              key={mood.id}
+              style={{
+                flex: 1,
+                backgroundColor: "#374151",
+                borderRadius: 12,
+                padding: 12,
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor: mood.mood.color + "30",
+              }}
+            >
+              <Text style={{ fontSize: 24, marginBottom: 4 }}>
+                {mood.mood.emoji}
+              </Text>
+              <Text
+                style={{
+                  color: mood.mood.color,
+                  fontSize: 12,
+                  fontWeight: "500",
+                }}
+              >
+                {mood.mood.name}
+              </Text>
+              <Text style={{ color: "#9ca3af", fontSize: 10, marginTop: 2 }}>
+                {new Date(mood.timestamp).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const renderInsights = () => {
+    if (!weeklyStats || weeklyStats.totalEntries === 0) return null;
+
+    const insights = [];
+    if (weeklyStats.averageMood >= 4) {
+      insights.push("🌟 You've been feeling great this week!");
+    } else if (weeklyStats.averageMood <= 2) {
+      insights.push(
+        "💙 Remember, it's okay to have tough days. I'm here for you."
+      );
+    }
+
+    if (weeklyStats.streak >= 7) {
+      insights.push("🔥 Amazing! You've been consistent with mood tracking.");
+    }
+
+    if (insights.length === 0) return null;
+
+    return (
+      <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+        <Text
+          style={{
+            color: "#fff",
+            fontSize: 18,
+            fontWeight: "bold",
+            marginBottom: 15,
+          }}
+        >
+          Insights
+        </Text>
+        {insights.map((insight, index) => (
+          <View
+            key={index}
+            style={{
+              backgroundColor: "#374151",
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 8,
+              borderLeftWidth: 4,
+              borderLeftColor: "#3b82f6",
+            }}
+          >
+            <Text style={{ color: "#e5e7eb", fontSize: 14, lineHeight: 20 }}>
+              {insight}
+            </Text>
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  const renderSection: ListRenderItem<HomeSection> = ({ item }) => {
+    switch (item.type) {
+      case "welcome":
+        return renderWelcomeSection();
+      case "mood-check":
+        return renderMoodCheckSection();
+      case "quick-actions":
+        return renderQuickActions();
+      case "quick-stats":
+        return renderQuickStats();
+      case "recent-moods":
+        return renderRecentMoods();
+      case "insights":
+        return renderInsights();
+      default:
+        return null;
+    }
+  };
 
   return (
-    <ScreenWrapper>
-      <HomeHeader
-        currentDate={currentDate}
-        greeting={greeting}
-        userFirstName={user?.firstName ?? undefined}
-        avatarUrl={avatarUrl}
-        onNotificationPress={() => setShowNotifications(true)}
-        notificationCount={notificationCount}
-        selectedMood={selectedMood}
-      />
-      {medicationError && (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>{medicationError}</Text>
-        </View>
-      )}
-      <FlatList
-        data={sections}
-        renderItem={renderSection}
-        keyExtractor={(item) => item.type}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        accessible={true}
-        accessibilityLabel="Home content sections"
-      />
-      <NotificationModal
-        visible={showNotifications}
-        onClose={() => setShowNotifications(false)}
-        medications={todaysMedications}
-      />
-    </ScreenWrapper>
-  );
-};
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#0f0f0f" }}>
+      <LinearGradient
+        colors={["#0f0f0f", "#1f2937", "#111827", "#0f0f0f"]}
+        style={{ flex: 1 }}
+      >
+        {/* Header */}
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            paddingHorizontal: 20,
+            paddingVertical: 15,
+            borderBottomWidth: 1,
+            borderBottomColor: "#374151",
+          }}
+        >
+          <View>
+            <Text style={{ color: "#fff", fontSize: 20, fontWeight: "bold" }}>
+              Nomi
+            </Text>
+            <Text style={{ color: "#9ca3af", fontSize: 12 }}>
+              Your wellness companion
+            </Text>
+          </View>
 
-export default Home;
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <TouchableOpacity
+              onPress={handleRefresh}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: "#374151",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <MaterialIcons name="refresh" size={20} color="#9ca3af" />
+            </TouchableOpacity>
+
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: "#10b981",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>
+                {user?.firstName?.charAt(0) || "U"}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Content - Using FlatList to avoid nesting issues */}
+        <FlatList
+          data={sections}
+          renderItem={renderSection}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          }
+          contentContainerStyle={{ paddingBottom: 100 }}
+        />
+      </LinearGradient>
+    </SafeAreaView>
+  );
+}

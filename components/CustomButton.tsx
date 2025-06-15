@@ -1,60 +1,103 @@
-import { TouchableOpacity, Text } from "react-native";
+"use client";
 
-import { ButtonProps } from "@/types/type";
+import { View, TouchableOpacity, Text } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const getBgVariantStyle = (variant: ButtonProps["bgVariant"]) => {
-  switch (variant) {
-    case "secondary":
-      return "bg-gray-500";
-    case "danger":
-      return "bg-red-500";
-    case "success":
-      return "bg-green-500";
-    case "outline":
-      return "bg-transparent border-neutral-300 border-[0.5px]";
-    default:
-      return "bg-[#0286FF]";
-  }
-};
+interface TabBarProps {
+  state: any;
+  descriptors: any;
+  navigation: any;
+}
 
-const getTextVariantStyle = (variant: ButtonProps["textVariant"]) => {
-  switch (variant) {
-    case "primary":
-      return "text-black";
-    case "secondary":
-      return "text-gray-100";
-    case "danger":
-      return "text-red-100";
-    case "success":
-      return "text-green-100";
-    default:
-      return "text-white";
-  }
-};
+export default function CustomTabBar({
+  state,
+  descriptors,
+  navigation,
+}: TabBarProps) {
+  const insets = useSafeAreaInsets();
 
-const CustomButton = ({
-  onPress,
-  title,
-  bgVariant = "primary",
-  textVariant = "default",
-  IconLeft,
-  IconRight,
-  className,
-  ...props
-}: ButtonProps) => {
+  const tabIcons: { [key: string]: string } = {
+    index: "home",
+    mood: "heart",
+    chat: "chatbubble-ellipses",
+    profile: "person",
+  };
+
+  const tabLabels: { [key: string]: string } = {
+    index: "Home",
+    mood: "Mood",
+    chat: "Chat",
+    profile: "Profile",
+  };
+
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      className={`w-full rounded-full p-3 flex flex-row justify-center items-center shadow-md shadow-neutral-400/70 ${getBgVariantStyle(bgVariant)} ${className}`}
-      {...props}
+    <LinearGradient
+      colors={["#1f2937", "#111827"]}
+      style={{
+        flexDirection: "row",
+        paddingBottom: insets.bottom,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: "#374151",
+      }}
     >
-      {IconLeft && <IconLeft />}
-      <Text className={`text-lg font-bold ${getTextVariantStyle(textVariant)}`}>
-        {title}
-      </Text>
-      {IconRight && <IconRight />}
-    </TouchableOpacity>
-  );
-};
+      {state.routes.map((route: any, index: number) => {
+        const { options } = descriptors[route.key];
+        const isFocused = state.index === index;
 
-export default CustomButton;
+        const onPress = () => {
+          const event = navigation.emit({
+            type: "tabPress",
+            target: route.key,
+            canPreventDefault: true,
+          });
+
+          if (!isFocused && !event.defaultPrevented) {
+            navigation.navigate(route.name);
+          }
+        };
+
+        return (
+          <TouchableOpacity
+            key={route.key}
+            onPress={onPress}
+            style={{
+              flex: 1,
+              alignItems: "center",
+              paddingVertical: 8,
+            }}
+          >
+            <View
+              style={{
+                width: 50,
+                height: 50,
+                borderRadius: 25,
+                backgroundColor: isFocused ? "#3b82f6" : "transparent",
+                justifyContent: "center",
+                alignItems: "center",
+                marginBottom: 4,
+              }}
+            >
+              <Ionicons
+                name={tabIcons[route.name] as any}
+                size={24}
+                color={isFocused ? "#3b82f6" : "#9ca3af"}
+              />
+            </View>
+            <Text
+              style={{
+                color: isFocused ? "#3b82f6" : "#9ca3af",
+                fontSize: 12,
+                fontWeight: isFocused ? "600" : "400",
+              }}
+            >
+              {tabLabels[route.name]}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </LinearGradient>
+  );
+}
