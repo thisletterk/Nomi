@@ -6,7 +6,11 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/nomi.png",
-    "platforms": ["ios", "android", "web"],
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "description": "Your gentle companion, always here to talk.",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
@@ -52,6 +56,15 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": "https://google.com/"
+      },
+      "eas": {
+        "projectId": "8d4fe029-b1f7-405b-abec-0a4f6cb7c2ea"
+      }
+    },
+    "owner": "kingskiss_"
   }
 }

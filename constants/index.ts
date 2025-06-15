@@ -40,6 +40,7 @@ import add from "@/assets/icons/add.png";
 import stats from "@/assets/icons/stats.png";
 import medication from "@/assets/icons/medication.png";
 import nomi from "@/assets/images/nomi.png";
+import bell from "@/assets/icons/bell.png";
 
 export const images = {
   screen1,
@@ -87,6 +88,7 @@ export const icons = {
   add,
   stats,
   medication,
+  bell,
 };
 
 export const onboarding = [

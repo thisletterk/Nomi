@@ -1,14 +1,35 @@
-import { View, Text } from "react-native";
-import React, { useEffect } from "react";
+import React from "react";
+import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
+import MoodMain from "@/app/(root)/mood/MoodMain";
+import MoodStats from "@/app/(root)/mood/MoodStats";
 
-export default function Mood() {
-  useEffect(() => {
-    console.log("mood screen mounted");
-  }, []);
+const Tab = createMaterialTopTabNavigator();
 
+export default function MoodTabs() {
   return (
-    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-      <Text style={{ fontSize: 24 }}>Mood Screen</Text>
-    </View>
+    <Tab.Navigator
+      screenOptions={{
+        tabBarLabelStyle: {
+          fontSize: 18,
+          fontWeight: "bold",
+          textTransform: "none",
+        },
+        tabBarIndicatorStyle: {
+          backgroundColor: "#4D2C1D",
+          height: 4,
+          borderRadius: 2,
+        },
+        tabBarActiveTintColor: "#4D2C1D",
+        tabBarInactiveTintColor: "#BCA27F",
+        tabBarStyle: {
+          backgroundColor: "#FFF",
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+      }}
+    >
+      <Tab.Screen name="Mood" component={MoodMain} />
+      <Tab.Screen name="Mood Stats" component={MoodStats} />
+    </Tab.Navigator>
   );
 }

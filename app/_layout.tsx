@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { LogBox } from "react-native";
 import "@/global.css";
 import { useAuth } from "@clerk/clerk-expo";
+import { MoodProvider } from "../contexts/MoodContext";
 
 import { tokenCache } from "@/lib/auth";
 
@@ -45,14 +46,16 @@ export default function RootLayout() {
 
   return (
     <ClerkProvider tokenCache={tokenCache} publishableKey={publishableKey}>
-      <ClerkLoaded>
-        <Stack>
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="(root)" options={{ headerShown: false }} />
-          <Stack.Screen name="+not-found" />
-        </Stack>
-      </ClerkLoaded>
+      <MoodProvider>
+        <ClerkLoaded>
+          <Stack>
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack.Screen name="(root)" options={{ headerShown: false }} />
+            <Stack.Screen name="+not-found" />
+          </Stack>
+        </ClerkLoaded>
+      </MoodProvider>
     </ClerkProvider>
   );
 }

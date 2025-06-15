@@ -1,23 +1,14 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { SignedIn, useUser } from "@clerk/clerk-expo";
-import { AppState } from "react-native";
-import {
-  Text,
-  View,
-  Image,
-  TouchableOpacity,
-  TextInput,
-  FlatList,
-  RefreshControl,
-} from "react-native";
+import { useUser } from "@clerk/clerk-expo";
+import { AppState, StyleSheet } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
+import { Text, View, FlatList, RefreshControl } from "react-native";
 import { fontSizes } from "@/constants/fontSizes";
 import ScreenWrapper from "@/components/ScreenWrapper";
-import NotificationButton from "@/components/NotificationButton";
 import {
   getMedications,
   Medication,
   getTodaysDoses,
-  recordDose,
   DoseHistory,
 } from "@/utils/storage";
 import {
@@ -25,8 +16,11 @@ import {
   scheduleMedicationReminder,
 } from "@/utils/notifications";
 import NotificationModal from "@/components/NotificationModal";
+import HomeHeader from "@/components/HomeHeader";
+import MoodTracker from "@/components/MoodTracker";
+import DailyTip from "@/components/DailyTip";
+import { useMood } from "@/contexts/MoodContext";
 
-// Function to get the greeting based on the time of day
 const getGreeting = () => {
   const currentHour = new Date().getHours();
   if (currentHour < 12) {
@@ -56,7 +50,6 @@ type MoodItem = {
   color: string;
 };
 
-// Sample mood data for the mood tracker
 const moodData: MoodItem[] = [
   { id: "1", mood: "Happy", icon: "😊", color: "#FFD700" },
   { id: "2", mood: "Calm", icon: "😌", color: "#87CEEB" },
@@ -68,53 +61,146 @@ const moodData: MoodItem[] = [
   { id: "8", mood: "Loved", icon: "❤️", color: "#FF69B4" },
 ];
 
-// Sample daily tips data
-const dailyTips = [
-  "Take a deep breath and focus on the present moment.",
-  "Remember, progress is progress, no matter how small.",
-  "Drink plenty of water and stay hydrated today.",
-  "You are stronger than you think. Keep going!",
-  "Take a moment to write down three things you're grateful for.",
-];
-
-// Function to get a random daily tip
-const getDailyTip = (): string => {
-  const randomIndex = Math.floor(Math.random() * dailyTips.length);
-  return dailyTips[randomIndex];
+const fetchDailyTip = async (): Promise<string> => {
+  try {
+    const response = await fetch("https://zenquotes.io/api/random");
+    const data = await response.json();
+    return data[0]?.q || "Stay positive and keep moving forward!";
+  } catch (error) {
+    console.error("Failed to fetch daily tip:", error);
+    return "Stay positive and keep moving forward!";
+  }
 };
+
+const styles = StyleSheet.create({
+  sectionContainer: {
+    padding: 24,
+    backgroundColor: "#FFF", // Neutral background
+    borderRadius: 24,
+    marginBottom: 24,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  moodAccent: {
+    borderLeftWidth: 6,
+    paddingLeft: 18,
+  },
+  sectionHeader: {
+    color: "#4D2C1D",
+    fontFamily: "JakartaBold",
+    fontSize: fontSizes.subheading + 2,
+    marginBottom: 8,
+  },
+  sectionBody: {
+    color: "#4D2C1D",
+    marginTop: 10,
+    fontSize: fontSizes.body,
+  },
+  errorBox: {
+    padding: 16,
+    backgroundColor: "#ffe5e5",
+    borderRadius: 8,
+    margin: 16,
+  },
+  errorText: {
+    color: "#b00020",
+  },
+  streakBarContainer: {
+    marginBottom: 16,
+    alignItems: "center",
+  },
+  streakLabel: {
+    fontSize: 14,
+    color: "#4D2C1D",
+    marginBottom: 4,
+    fontFamily: "JakartaMedium",
+  },
+  streakBar: {
+    width: "80%",
+    height: 12,
+    backgroundColor: "#FFE5B4",
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  streakFill: {
+    height: "100%",
+    backgroundColor: "#FFAA4D",
+    borderRadius: 8,
+  },
+});
+
+const STREAK_TOTAL = 7; // e.g., 7 days streak
+
+// --- ADD THIS FUNCTION ---
+type SaveMoodArgs = {
+  userId: string;
+  mood: string;
+  label: string;
+  color: string;
+};
+
+async function saveMoodToDatabase({
+  userId,
+  mood,
+  label,
+  color,
+}: SaveMoodArgs) {
+  try {
+    const res = await fetch("/api/mood", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, mood, label, color }),
+    });
+    if (!res.ok) {
+      throw new Error("Failed to save mood");
+    }
+    return await res.json();
+  } catch (error) {
+    console.error("Error saving mood:", error);
+  }
+}
+// --- END ADD ---
 
 const Home = () => {
   const { user } = useUser();
   const greeting = getGreeting();
   const currentDate = getCurrentDate();
-  const dailyTip = getDailyTip();
 
-  const [refreshing, setRefreshing] = useState(false); // State for pull-to-refresh
-
-  //////////////////////////////
+  const [dailyTip, setDailyTip] = useState<string>("");
+  const [refreshing, setRefreshing] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [medications, setMedications] = useState<Medication[]>([]);
   const [todaysMedications, setTodaysMedications] = useState<Medication[]>([]);
   const [completedDoses, setCompletedDoses] = useState(0);
   const [doseHistory, setDoseHistory] = useState<DoseHistory[]>([]);
+  const [medicationError, setMedicationError] = useState<string | null>(null);
+  const [selectedMoodId, setSelectedMoodId] = useState<string | null>(null);
+  const [streak, setStreak] = useState(3); // Example: 3-day streak
+
+  const { selectedMood, setSelectedMood } = useMood();
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchDailyTip().then(setDailyTip);
+    }, [])
+  );
 
   const loadMedications = useCallback(async () => {
     try {
+      setMedicationError(null);
       const [allMedications, todaysDoses] = await Promise.all([
         getMedications(),
         getTodaysDoses(),
       ]);
-
       setDoseHistory(todaysDoses);
       setMedications(allMedications);
 
-      // Filter medications for today
       const today = new Date();
       const todayMeds = allMedications.filter((med) => {
         const startDate = new Date(med.startDate);
         const durationDays = parseInt(med.duration.split(" ")[0]);
-
-        // For ongoing medications or if within duration
         if (
           durationDays === -1 ||
           (today >= startDate &&
@@ -130,10 +216,10 @@ const Home = () => {
 
       setTodaysMedications(todayMeds);
 
-      // Calculate completed doses
       const completed = todaysDoses.filter((dose) => dose.taken).length;
       setCompletedDoses(completed);
     } catch (error) {
+      setMedicationError("Failed to load medications. Please try again.");
       console.error("Error loading medications:", error);
     }
   }, []);
@@ -145,8 +231,6 @@ const Home = () => {
         console.log("Failed to get push notification token");
         return;
       }
-
-      // Schedule reminders for all medications
       const medications = await getMedications();
       for (const medication of medications) {
         if (medication.reminderEnabled) {
@@ -158,32 +242,48 @@ const Home = () => {
     }
   };
 
-  // Use useEffect for initial load
   useEffect(() => {
     loadMedications();
     setupNotifications();
-
-    // Handle app state changes for notifications
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       if (nextAppState === "active") {
         loadMedications();
       }
     });
-
     return () => {
       subscription.remove();
     };
   }, []);
 
-  /////////////////////////////
-
   const onRefresh = () => {
     setRefreshing(true);
-    // Simulate a network request or data refresh
     setTimeout(() => {
       setRefreshing(false);
-    }, 2000); // Refresh complete after 2 seconds
+    }, 2000);
   };
+
+  // --- UPDATE THIS FUNCTION ---
+  const handleSelectMood = useCallback(
+    async (id: string) => {
+      setSelectedMoodId(id);
+      const mood = moodData.find((m) => m.id === id);
+      if (mood && user) {
+        setSelectedMood({
+          mood: mood.icon,
+          label: mood.mood,
+          color: mood.color,
+        });
+        await saveMoodToDatabase({
+          userId: user.id,
+          mood: mood.icon,
+          label: mood.mood,
+          color: mood.color,
+        });
+      }
+    },
+    [setSelectedMood, setSelectedMoodId, moodData, user]
+  );
+  // --- END UPDATE ---
 
   const sections = [
     { type: "moodTracker" },
@@ -192,244 +292,104 @@ const Home = () => {
     { type: "footer" },
   ];
 
-  const renderSection = ({ item }: { item: { type: string } }) => {
-    if (item.type === "moodTracker") {
-      return (
-        <View style={{ padding: 20 }}>
-          <Text
-            style={{
-              color: "#4D2C1D",
-              fontFamily: "JakartaBold",
-              fontSize: fontSizes.subheading,
-            }}
+  const renderSection = useCallback(
+    ({ item }: { item: { type: string } }) => {
+      if (item.type === "moodTracker") {
+        return (
+          <View
+            style={[
+              styles.sectionContainer,
+              selectedMood && {
+                ...styles.moodAccent,
+                borderLeftColor: selectedMood.color,
+              },
+            ]}
           >
-            How do you feel?
-          </Text>
-          <FlatList
-            data={moodData}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={{
-                  alignItems: "center",
-                  flex: 1,
-                  marginVertical: 10,
-                }}
-              >
+            {/* Streak/Progress Bar */}
+            <View style={styles.streakBarContainer}>
+              <Text style={styles.streakLabel}>{streak} day streak!</Text>
+              <View style={styles.streakBar}>
                 <View
-                  style={{
-                    backgroundColor: item.color,
-                    width: 70,
-                    height: 70,
-                    borderRadius: 35,
-                    justifyContent: "center",
-                    alignItems: "center",
-                  }}
-                >
-                  <Text style={{ fontSize: 28 }}>{item.icon}</Text>
-                </View>
-                <Text
-                  style={{
-                    color: "#4D2C1D",
-                    fontFamily: "JakartaMedium",
-                    fontSize: 14,
-                    marginTop: 8,
-                  }}
-                >
-                  {item.mood}
-                </Text>
-              </TouchableOpacity>
-            )}
-            keyExtractor={(item) => item.id}
-            numColumns={4}
-            columnWrapperStyle={{ justifyContent: "space-between" }}
-            showsVerticalScrollIndicator={false}
-          />
-        </View>
-      );
-    } else if (item.type === "dailyTip") {
-      return (
-        <View
-          style={{
-            padding: 20,
-            backgroundColor: "#FFF4CC",
-            borderRadius: 20,
-            marginBottom: 20,
-          }}
-        >
-          <Text
-            style={{
-              color: "#4D2C1D",
-              fontFamily: "JakartaBold",
-              fontSize: fontSizes.subheading,
-            }}
+                  style={[
+                    styles.streakFill,
+                    { width: `${(streak / STREAK_TOTAL) * 100}%` },
+                  ]}
+                />
+              </View>
+            </View>
+            {/* Mood Tracker */}
+            <MoodTracker
+              moodData={moodData}
+              selectedMoodId={selectedMoodId}
+              onSelectMood={handleSelectMood}
+              largeIcons
+            />
+          </View>
+        );
+      } else if (item.type === "dailyTip") {
+        return (
+          <View style={styles.sectionContainer}>
+            <DailyTip tip={dailyTip} />
+          </View>
+        );
+      } else if (item.type === "additionalContent") {
+        return (
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionHeader}>Additional Content</Text>
+            <Text style={styles.sectionBody}>
+              This is where you can add more content, such as articles, tips, or
+              any other information you want to share with the user.
+            </Text>
+          </View>
+        );
+      } else if (item.type === "footer") {
+        return (
+          <View
+            style={[styles.sectionContainer, { backgroundColor: "#FFF9F0" }]}
           >
-            Daily Tip
-          </Text>
-          <Text
-            style={{
-              color: "#4D2C1D",
-              marginTop: 10,
-              fontSize: fontSizes.body,
-            }}
-          >
-            {dailyTip}
-          </Text>
-        </View>
-      );
-    } else if (item.type === "additionalContent") {
-      return (
-        <View style={{ padding: 20 }}>
-          <Text
-            style={{
-              color: "#4D2C1D",
-              fontFamily: "JakartaBold",
-              fontSize: fontSizes.subheading,
-            }}
-          >
-            Additional Content
-          </Text>
-          <Text
-            style={{
-              color: "#4D2C1D",
-              marginTop: 10,
-              fontSize: fontSizes.body,
-            }}
-          >
-            This is where you can add more content, such as articles, tips, or
-            any other information you want to share with the user.
-          </Text>
-        </View>
-      );
-    } else if (item.type === "footer") {
-      return (
-        <View
-          style={{
-            padding: 20,
-            backgroundColor: "#FFF4CC",
-            borderRadius: 20,
-            marginBottom: 20,
-          }}
-        >
-          <Text
-            style={{
-              color: "#4D2C1D",
-              fontFamily: "JakartaBold",
-              fontSize: fontSizes.subheading,
-            }}
-          >
-            Footer Section
-          </Text>
-          <Text
-            style={{
-              color: "#4D2C1D",
-              marginTop: 10,
-              fontSize: fontSizes.body,
-            }}
-          >
-            This is where you can add footer content, such as links to privacy
-            policy, terms of service, or any other relevant information.
-          </Text>
-        </View>
-      );
-    }
-    return null;
-  };
+            <Text style={styles.sectionHeader}>Footer Section</Text>
+            <Text style={styles.sectionBody}>
+              Privacy Policy | Terms of Service | Support
+            </Text>
+          </View>
+        );
+      }
+      return null;
+    },
+    [dailyTip, selectedMoodId, handleSelectMood, streak, selectedMood]
+  );
+
+  // Avatar and notification badge for header
+  const avatarUrl = user?.imageUrl || undefined;
+  const notificationCount = todaysMedications.length - completedDoses;
 
   return (
     <ScreenWrapper>
-      {/* Static Header Section */}
-      <View
-        style={{
-          backgroundColor: "#4D2C1D",
-          padding: 20,
-          borderBottomLeftRadius: 30,
-          borderBottomRightRadius: 30,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ color: "#FFF4CC", fontSize: 14 }}>{currentDate}</Text>
-          <NotificationButton
-            onPress={() => setShowNotifications(true)}
-            notificationCount={todaysMedications.length}
-          />
-          {/* <Text>{todaysMedications}dd</Text> */}
+      <HomeHeader
+        currentDate={currentDate}
+        greeting={greeting}
+        userFirstName={user?.firstName ?? undefined}
+        avatarUrl={avatarUrl}
+        onNotificationPress={() => setShowNotifications(true)}
+        notificationCount={notificationCount}
+        selectedMood={selectedMood}
+      />
+      {medicationError && (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{medicationError}</Text>
         </View>
-
-        <View
-          style={{ flexDirection: "row", alignItems: "center", marginTop: 20 }}
-        >
-          <Image
-            source={{ uri: "https://randomuser.me/api/portraits/men/44.jpg" }}
-            style={{ width: 48, height: 48, borderRadius: 24 }}
-          />
-          <View style={{ marginLeft: 16 }}>
-            <Text
-              style={{
-                color: "#FFF4CC",
-                fontFamily: "JakartaBold",
-                fontSize: 18,
-              }}
-            >
-              {greeting}, {user?.firstName}!
-            </Text>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginTop: 4,
-              }}
-            >
-              <Text style={{ color: "#A9FFCB", fontSize: 12, marginRight: 8 }}>
-                Pro
-              </Text>
-              <Text style={{ color: "#FFAA4D", fontSize: 12, marginRight: 8 }}>
-                • 80%
-              </Text>
-              <Text style={{ color: "#FFF4CC", fontSize: 12 }}>😊 Happy</Text>
-            </View>
-          </View>
-        </View>
-
-        <View
-          style={{
-            backgroundColor: "#FFF4CC",
-            flexDirection: "row",
-            alignItems: "center",
-            marginTop: 20,
-            borderRadius: 50,
-            paddingHorizontal: 16,
-            paddingVertical: 8,
-          }}
-        >
-          <TextInput
-            placeholder="Search anything..."
-            placeholderTextColor="#ADADAD"
-            style={{ flex: 1, color: "#4D2C1D" }}
-          />
-          <TouchableOpacity>
-            <Text style={{ color: "#4D2C1D", fontWeight: "bold" }}>🔍</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Scrollable Content with Pull-to-Refresh */}
+      )}
       <FlatList
         data={sections}
         renderItem={renderSection}
-        keyExtractor={(item, index) => index.toString()}
+        keyExtractor={(item) => item.type}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
+        accessible={true}
+        accessibilityLabel="Home content sections"
       />
-      {/* NOTIFICATION MODAL */}
-
       <NotificationModal
         visible={showNotifications}
         onClose={() => setShowNotifications(false)}
