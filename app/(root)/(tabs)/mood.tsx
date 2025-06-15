@@ -103,8 +103,6 @@ export default function MoodTab() {
 
   const renderTodaysView = () => (
     <ScrollView
-      style={{ flex: 1, marginHorizontal: 20 }}
-      contentContainerStyle={{ paddingBottom: 100 }}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
       }
