@@ -1,103 +1,141 @@
 "use client";
 
-import { View, TouchableOpacity, Text } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type React from "react";
 
-interface TabBarProps {
-  state: any;
-  descriptors: any;
-  navigation: any;
+import { TouchableOpacity, Text, ActivityIndicator } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+
+interface CustomButtonProps {
+  title: string;
+  onPress: () => void;
+  loading?: boolean;
+  disabled?: boolean;
+  variant?: "primary" | "secondary" | "outline";
+  size?: "small" | "medium" | "large";
+  icon?: React.ReactNode;
 }
 
-export default function CustomTabBar({
-  state,
-  descriptors,
-  navigation,
-}: TabBarProps) {
-  const insets = useSafeAreaInsets();
-
-  const tabIcons: { [key: string]: string } = {
-    index: "home",
-    mood: "heart",
-    chat: "chatbubble-ellipses",
-    profile: "person",
+export default function CustomButton({
+  title,
+  onPress,
+  loading = false,
+  disabled = false,
+  variant = "primary",
+  size = "medium",
+  icon,
+}: CustomButtonProps) {
+  const getButtonHeight = () => {
+    switch (size) {
+      case "small":
+        return 40;
+      case "large":
+        return 56;
+      default:
+        return 48;
+    }
   };
 
-  const tabLabels: { [key: string]: string } = {
-    index: "Home",
-    mood: "Mood",
-    chat: "Chat",
-    profile: "Profile",
+  const getFontSize = () => {
+    switch (size) {
+      case "small":
+        return 14;
+      case "large":
+        return 18;
+      default:
+        return 16;
+    }
   };
 
-  return (
-    <LinearGradient
-      colors={["#1f2937", "#111827"]}
-      style={{
-        flexDirection: "row",
-        paddingBottom: insets.bottom,
-        paddingTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: "#374151",
-      }}
-    >
-      {state.routes.map((route: any, index: number) => {
-        const { options } = descriptors[route.key];
-        const isFocused = state.index === index;
+  const getColors = (): [string, string, ...string[]] => {
+    switch (variant) {
+      case "secondary":
+        return ["#6b7280", "#4b5563"];
+      case "outline":
+        return ["transparent", "transparent"];
+      default:
+        return ["#3b82f6", "#1d4ed8"];
+    }
+  };
 
-        const onPress = () => {
-          const event = navigation.emit({
-            type: "tabPress",
-            target: route.key,
-            canPreventDefault: true,
-          });
+  const isDisabled = disabled || loading;
 
-          if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(route.name);
-          }
-        };
-
-        return (
-          <TouchableOpacity
-            key={route.key}
-            onPress={onPress}
-            style={{
-              flex: 1,
-              alignItems: "center",
-              paddingVertical: 8,
-            }}
-          >
-            <View
-              style={{
-                width: 50,
-                height: 50,
-                borderRadius: 25,
-                backgroundColor: isFocused ? "#3b82f6" : "transparent",
-                justifyContent: "center",
-                alignItems: "center",
-                marginBottom: 4,
-              }}
-            >
-              <Ionicons
-                name={tabIcons[route.name] as any}
-                size={24}
-                color={isFocused ? "#3b82f6" : "#9ca3af"}
-              />
-            </View>
+  if (variant === "outline") {
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        disabled={isDisabled}
+        style={{
+          height: getButtonHeight(),
+          borderRadius: 12,
+          borderWidth: 2,
+          borderColor: isDisabled ? "#6b7280" : "#3b82f6",
+          justifyContent: "center",
+          alignItems: "center",
+          flexDirection: "row",
+          opacity: isDisabled ? 0.5 : 1,
+          paddingHorizontal: 20,
+        }}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color="#3b82f6" />
+        ) : (
+          <>
+            {icon && <>{icon}</>}
             <Text
               style={{
-                color: isFocused ? "#3b82f6" : "#9ca3af",
-                fontSize: 12,
-                fontWeight: isFocused ? "600" : "400",
+                color: isDisabled ? "#6b7280" : "#3b82f6",
+                fontSize: getFontSize(),
+                fontWeight: "600",
+                marginLeft: icon ? 8 : 0,
               }}
             >
-              {tabLabels[route.name]}
+              {title}
             </Text>
-          </TouchableOpacity>
-        );
-      })}
-    </LinearGradient>
+          </>
+        )}
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={isDisabled}
+      style={{
+        height: getButtonHeight(),
+        borderRadius: 12,
+        overflow: "hidden",
+        opacity: isDisabled ? 0.5 : 1,
+      }}
+    >
+      <LinearGradient
+        colors={getColors()}
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          flexDirection: "row",
+          paddingHorizontal: 20,
+        }}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <>
+            {icon && <>{icon}</>}
+            <Text
+              style={{
+                color: "#fff",
+                fontSize: getFontSize(),
+                fontWeight: "600",
+                marginLeft: icon ? 8 : 0,
+              }}
+            >
+              {title}
+            </Text>
+          </>
+        )}
+      </LinearGradient>
+    </TouchableOpacity>
   );
 }

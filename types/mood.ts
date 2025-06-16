@@ -24,6 +24,7 @@ export interface MoodStats {
   period: "day" | "week" | "month";
 }
 
+// This will be loaded from the database now
 export const MOOD_TYPES: MoodType[] = [
   { id: "very-sad", name: "Very Sad", emoji: "😢", color: "#ef4444", value: 1 },
   { id: "sad", name: "Sad", emoji: "😔", color: "#f97316", value: 2 },

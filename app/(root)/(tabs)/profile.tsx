@@ -53,15 +53,18 @@ export default function ProfileScreen() {
     dataSharing: false,
     reminderEnabled: true,
   });
+  const [signingOut, setSigningOut] = useState(false);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
   useEffect(() => {
-    loadProfileData();
+    if (user) {
+      loadProfileData();
+    }
     startAnimations();
-  }, []);
+  }, [user]);
 
   const startAnimations = () => {
     Animated.parallel([
@@ -79,26 +82,27 @@ export default function ProfileScreen() {
   };
 
   const loadProfileData = async () => {
+    if (!user) return;
+
     try {
       // Load mood statistics
-      const allMoods = await MoodStorage.getAllMoodEntries();
-      const userMoods = allMoods.filter((mood) => mood.userId === user?.id);
+      const allMoods = await MoodStorage.getAllMoodEntries(user.id);
 
-      if (userMoods.length > 0) {
-        const totalMoodValue = userMoods.reduce(
+      if (allMoods.length > 0) {
+        const totalMoodValue = allMoods.reduce(
           (sum, mood) => sum + mood.mood.value,
           0
         );
-        const averageMood = totalMoodValue / userMoods.length;
+        const averageMood = totalMoodValue / allMoods.length;
 
         const weekStart = new Date();
         weekStart.setDate(weekStart.getDate() - weekStart.getDay());
         const weekStartStr = weekStart.toISOString().split("T")[0];
-        const weeklyStats = await MoodAnalytics.getWeeklyStats(weekStartStr);
+        const streak = await MoodAnalytics.calculateStreak(user.id);
 
         setStats({
-          totalMoodEntries: userMoods.length,
-          currentStreak: weeklyStats.streak,
+          totalMoodEntries: allMoods.length,
+          currentStreak: streak,
           averageMood: Math.round(averageMood * 10) / 10,
           joinDate: user?.createdAt
             ? new Date(user.createdAt).toLocaleDateString()
@@ -128,15 +132,39 @@ export default function ProfileScreen() {
     await AsyncStorage.setItem("user_settings", JSON.stringify(newSettings));
   };
 
-  const handleSignOut = () => {
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign Out",
-        style: "destructive",
-        onPress: () => signOut(),
-      },
-    ]);
+  const handleSignOut = async () => {
+    Alert.alert(
+      "Sign Out",
+      "Are you sure you want to sign out? This will clear all local data.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign Out",
+          style: "destructive",
+          onPress: async () => {
+            setSigningOut(true);
+            try {
+              // Clear local storage and cached data
+              await AsyncStorage.clear();
+
+              // Sign out from Clerk
+              await signOut();
+
+              // Navigate to sign-in page
+              router.replace("/(auth)/sign-in");
+            } catch (error) {
+              console.error("Error during sign out:", error);
+              Alert.alert(
+                "Sign Out Error",
+                "There was an issue signing you out. Please try again."
+              );
+            } finally {
+              setSigningOut(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleExportData = () => {
@@ -444,6 +472,7 @@ export default function ProfileScreen() {
 
       <TouchableOpacity
         onPress={handleSignOut}
+        disabled={signingOut}
         style={{
           flexDirection: "row",
           alignItems: "center",
@@ -453,6 +482,7 @@ export default function ProfileScreen() {
           marginBottom: 8,
           borderWidth: 1,
           borderColor: "#f59e0b30",
+          opacity: signingOut ? 0.6 : 1,
         }}
       >
         <View
@@ -466,14 +496,18 @@ export default function ProfileScreen() {
             marginRight: 16,
           }}
         >
-          <Ionicons name="log-out" size={20} color="#f59e0b" />
+          <Ionicons
+            name={signingOut ? "hourglass" : "log-out"}
+            size={20}
+            color="#f59e0b"
+          />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ color: "#f59e0b", fontSize: 16, fontWeight: "500" }}>
-            Sign Out
+            {signingOut ? "Signing Out..." : "Sign Out"}
           </Text>
           <Text style={{ color: "#9ca3af", fontSize: 14 }}>
-            Sign out of your account
+            {signingOut ? "Please wait..." : "Sign out of your account"}
           </Text>
         </View>
       </TouchableOpacity>
@@ -516,9 +550,7 @@ export default function ProfileScreen() {
   );
 
   return (
-    <SafeAreaView
-      style={{ flex: 1, backgroundColor: "#0f0f0f", marginBottom: 100 }}
-    >
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#0f0f0f" }}>
       <LinearGradient
         colors={["#0f0f0f", "#1f2937", "#111827", "#0f0f0f"]}
         style={{ flex: 1 }}
@@ -559,6 +591,7 @@ export default function ProfileScreen() {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
+          contentContainerStyle={{ paddingBottom: 20 }}
         >
           {renderProfileHeader()}
           {renderStatsCards()}

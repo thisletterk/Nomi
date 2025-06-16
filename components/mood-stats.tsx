@@ -7,9 +7,11 @@ import {
   TouchableOpacity,
   ScrollView,
   Dimensions,
+  RefreshControl,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import { useUser } from "@clerk/clerk-expo";
 import { type MoodStats, MOOD_TYPES } from "../types/mood";
 import { MoodAnalytics } from "../lib/mood-analytics";
 
@@ -18,15 +20,21 @@ const { width } = Dimensions.get("window");
 type StatsPeriod = "day" | "week" | "month";
 
 export default function MoodStatsView() {
+  const { user } = useUser();
   const [selectedPeriod, setSelectedPeriod] = useState<StatsPeriod>("week");
   const [stats, setStats] = useState<MoodStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    loadStats();
-  }, [selectedPeriod]);
+    if (user) {
+      loadStats();
+    }
+  }, [selectedPeriod, user]);
 
   const loadStats = async () => {
+    if (!user) return;
+
     setLoading(true);
     try {
       let statsData: MoodStats;
@@ -35,21 +43,26 @@ export default function MoodStatsView() {
       switch (selectedPeriod) {
         case "day":
           const todayStr = today.toISOString().split("T")[0];
-          statsData = await MoodAnalytics.getDailyStats(todayStr);
+          statsData = await MoodAnalytics.getDailyStats(user.id, todayStr);
           break;
         case "week":
           const weekStart = new Date(today);
           weekStart.setDate(today.getDate() - today.getDay());
           const weekStartStr = weekStart.toISOString().split("T")[0];
-          statsData = await MoodAnalytics.getWeeklyStats(weekStartStr);
+          statsData = await MoodAnalytics.getWeeklyStats(user.id, weekStartStr);
           break;
         case "month":
           statsData = await MoodAnalytics.getMonthlyStats(
+            user.id,
             today.getFullYear(),
             today.getMonth() + 1
           );
           break;
       }
+
+      // Get streak separately
+      const streak = await MoodAnalytics.calculateStreak(user.id);
+      statsData.streak = streak;
 
       setStats(statsData);
     } catch (error) {
@@ -57,6 +70,12 @@ export default function MoodStatsView() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadStats();
+    setRefreshing(false);
   };
 
   const getMoodEmoji = (averageMood: number): string => {
@@ -77,6 +96,7 @@ export default function MoodStatsView() {
         borderRadius: 25,
         padding: 4,
         marginBottom: 20,
+        marginHorizontal: 20,
       }}
     >
       {(["day", "week", "month"] as StatsPeriod[]).map((period) => (
@@ -116,6 +136,7 @@ export default function MoodStatsView() {
             padding: 20,
             alignItems: "center",
             marginBottom: 20,
+            marginHorizontal: 20,
           }}
         >
           <Text style={{ fontSize: 48, marginBottom: 10 }}>📊</Text>
@@ -128,74 +149,75 @@ export default function MoodStatsView() {
     }
 
     return (
-      <LinearGradient
-        colors={[
-          getMoodColor(stats.averageMood) + "20",
-          getMoodColor(stats.averageMood) + "10",
-        ]}
-        style={{
-          borderRadius: 20,
-          padding: 20,
-          marginBottom: 20,
-          borderWidth: 1,
-          borderColor: getMoodColor(stats.averageMood) + "30",
-        }}
-      >
-        <View style={{ alignItems: "center", marginBottom: 15 }}>
-          <Text style={{ fontSize: 48, marginBottom: 5 }}>
-            {getMoodEmoji(stats.averageMood)}
-          </Text>
-          <Text
-            style={{
-              color: "#fff",
-              fontSize: 18,
-              fontWeight: "bold",
-              textTransform: "capitalize",
-            }}
-          >
-            Average {selectedPeriod} Mood
-          </Text>
-          <Text
-            style={{
-              color: getMoodColor(stats.averageMood),
-              fontSize: 24,
-              fontWeight: "bold",
-            }}
-          >
-            {stats.averageMood.toFixed(1)}/5.0
-          </Text>
-        </View>
-
-        <View
+      <View style={{ marginHorizontal: 20, marginBottom: 20 }}>
+        <LinearGradient
+          colors={[
+            getMoodColor(stats.averageMood) + "20",
+            getMoodColor(stats.averageMood) + "10",
+          ]}
           style={{
-            flexDirection: "row",
-            justifyContent: "space-around",
-            paddingTop: 15,
-            borderTopWidth: 1,
-            borderTopColor: "#4b5563",
+            borderRadius: 20,
+            padding: 20,
+            borderWidth: 1,
+            borderColor: getMoodColor(stats.averageMood) + "30",
           }}
         >
-          <View style={{ alignItems: "center" }}>
-            <Ionicons name="calendar" size={20} color="#3b82f6" />
-            <Text style={{ color: "#9ca3af", fontSize: 12, marginTop: 4 }}>
-              Entries
+          <View style={{ alignItems: "center", marginBottom: 15 }}>
+            <Text style={{ fontSize: 48, marginBottom: 5 }}>
+              {getMoodEmoji(stats.averageMood)}
             </Text>
-            <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>
-              {stats.totalEntries}
+            <Text
+              style={{
+                color: "#fff",
+                fontSize: 18,
+                fontWeight: "bold",
+                textTransform: "capitalize",
+              }}
+            >
+              Average {selectedPeriod} Mood
+            </Text>
+            <Text
+              style={{
+                color: getMoodColor(stats.averageMood),
+                fontSize: 24,
+                fontWeight: "bold",
+              }}
+            >
+              {stats.averageMood.toFixed(1)}/5.0
             </Text>
           </View>
 
-          <View style={{ alignItems: "center" }}>
-            <Ionicons name="flame" size={20} color="#f59e0b" />
-            <Text style={{ color: "#9ca3af", fontSize: 12, marginTop: 4 }}>
-              Streak
-            </Text>
-            <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>
-              {stats.streak} days
-            </Text>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-around",
+              paddingTop: 15,
+              borderTopWidth: 1,
+              borderTopColor: "#4b5563",
+            }}
+          >
+            <View style={{ alignItems: "center" }}>
+              <Ionicons name="calendar" size={20} color="#3b82f6" />
+              <Text style={{ color: "#9ca3af", fontSize: 12, marginTop: 4 }}>
+                Entries
+              </Text>
+              <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>
+                {stats.totalEntries}
+              </Text>
+            </View>
+
+            <View style={{ alignItems: "center" }}>
+              <Ionicons name="flame" size={20} color="#f59e0b" />
+              <Text style={{ color: "#9ca3af", fontSize: 12, marginTop: 4 }}>
+                Streak
+              </Text>
+              <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>
+                {stats.streak} days
+              </Text>
+            </View>
           </View>
-        </View>
-      </LinearGradient>
+        </LinearGradient>
+      </View>
     );
   };
 
@@ -209,6 +231,7 @@ export default function MoodStatsView() {
           borderRadius: 20,
           padding: 20,
           marginBottom: 20,
+          marginHorizontal: 20,
         }}
       >
         <Text
@@ -287,8 +310,18 @@ export default function MoodStatsView() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: "#0f0f0f" }}>
-      <View style={{ padding: 20, paddingBottom: 100 }}>
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{
+        paddingBottom: 120, // Extra padding for bottom navigation
+        flexGrow: 1,
+      }}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+      }
+    >
+      <View style={{ paddingTop: 20 }}>
         <Text
           style={{
             fontSize: 24,

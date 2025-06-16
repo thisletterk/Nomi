@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { type MoodEntry, type MoodType, MOOD_TYPES } from "../types/mood";
 import { MoodStorage } from "../lib/mood-storage";
+import { MoodDatabase } from "../lib/mood-database";
 import { useUser } from "@clerk/clerk-expo";
 
 const { width } = Dimensions.get("window");
@@ -37,8 +38,24 @@ export default function MoodSelector({
   );
   const [note, setNote] = useState<string>(existingEntry?.note || "");
   const [saving, setSaving] = useState(false);
+  const [moodTypes, setMoodTypes] = useState<MoodType[]>(MOOD_TYPES);
   const [scaleAnim] = useState(new Animated.Value(1));
   const textInputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    loadMoodTypes();
+  }, []);
+
+  const loadMoodTypes = async () => {
+    try {
+      const types = await MoodDatabase.getMoodTypes();
+      setMoodTypes(types);
+    } catch (error) {
+      console.error("Error loading mood types:", error);
+      // Fallback to static types
+      setMoodTypes(MOOD_TYPES);
+    }
+  };
 
   const handleMoodSelect = (mood: MoodType) => {
     setSelectedMood(mood);
@@ -164,7 +181,7 @@ export default function MoodSelector({
             gap: 15,
           }}
         >
-          {MOOD_TYPES.map((mood) => (
+          {moodTypes.map((mood) => (
             <TouchableOpacity
               key={mood.id}
               onPress={() => handleMoodSelect(mood)}

@@ -4,12 +4,15 @@ import { useState, useEffect } from "react";
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { useUser } from "@clerk/clerk-expo";
 import MoodSelector from "@/components/mood-selector";
 import MoodStatsView from "@/components/mood-stats";
 import type { MoodEntry } from "@/types/mood";
@@ -18,18 +21,23 @@ import { MoodStorage } from "@/lib/mood-storage";
 type MoodTabView = "today" | "stats";
 
 export default function MoodTab() {
+  const { user } = useUser();
   const [activeView, setActiveView] = useState<MoodTabView>("today");
   const [todaysMood, setTodaysMood] = useState<MoodEntry | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    loadTodaysMood();
-  }, []);
+    if (user) {
+      loadTodaysMood();
+    }
+  }, [user]);
 
   const loadTodaysMood = async () => {
+    if (!user) return;
+
     try {
       const today = new Date().toISOString().split("T")[0];
-      const mood = await MoodStorage.getMoodEntryForDate(today);
+      const mood = await MoodStorage.getMoodEntryForDate(user.id, today);
       setTodaysMood(mood);
     } catch (error) {
       console.error("Error loading today's mood:", error);
@@ -103,9 +111,16 @@ export default function MoodTab() {
 
   const renderTodaysView = () => (
     <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{
+        paddingBottom: 120, // Extra padding for bottom navigation
+        flexGrow: 1,
+      }}
+      showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
       }
+      keyboardShouldPersistTaps="handled"
     >
       {todaysMood && (
         <View
@@ -222,7 +237,13 @@ export default function MoodTab() {
 
         {renderTabSelector()}
 
-        {activeView === "today" ? renderTodaysView() : <MoodStatsView />}
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        >
+          {activeView === "today" ? renderTodaysView() : <MoodStatsView />}
+        </KeyboardAvoidingView>
       </LinearGradient>
     </SafeAreaView>
   );

@@ -1,38 +1,48 @@
+import { MoodDatabase } from "./mood-database";
 import type { MoodEntry, MoodStats } from "../types/mood";
-import { MoodStorage } from "./mood-storage";
 
 export class MoodAnalytics {
-  static async getDailyStats(date: string): Promise<MoodStats> {
-    const entries = await MoodStorage.getMoodEntriesForDateRange(date, date);
-    return await this.calculateStats(entries, "day");
+  static async getDailyStats(userId: string, date: string): Promise<MoodStats> {
+    const entries = await MoodDatabase.getMoodEntriesForDateRange(
+      userId,
+      date,
+      date
+    );
+    return this.calculateStats(entries, "day");
   }
 
-  static async getWeeklyStats(startDate: string): Promise<MoodStats> {
+  static async getWeeklyStats(
+    userId: string,
+    startDate: string
+  ): Promise<MoodStats> {
     const endDate = this.addDays(startDate, 6);
-    const entries = await MoodStorage.getMoodEntriesForDateRange(
+    const entries = await MoodDatabase.getMoodEntriesForDateRange(
+      userId,
       startDate,
       endDate
     );
-    return await this.calculateStats(entries, "week");
+    return this.calculateStats(entries, "week");
   }
 
   static async getMonthlyStats(
+    userId: string,
     year: number,
     month: number
   ): Promise<MoodStats> {
     const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
     const endDate = `${year}-${month.toString().padStart(2, "0")}-31`;
-    const entries = await MoodStorage.getMoodEntriesForDateRange(
+    const entries = await MoodDatabase.getMoodEntriesForDateRange(
+      userId,
       startDate,
       endDate
     );
-    return await this.calculateStats(entries, "month");
+    return this.calculateStats(entries, "month");
   }
 
-  private static async calculateStats(
+  private static calculateStats(
     entries: MoodEntry[],
     period: "day" | "week" | "month"
-  ): Promise<MoodStats> {
+  ): MoodStats {
     if (entries.length === 0) {
       return {
         averageMood: 0,
@@ -60,31 +70,12 @@ export class MoodAnalytics {
       totalEntries: entries.length,
       moodDistribution,
       period,
-      streak: await this.calculateStreak(),
+      streak: 0, // Will be calculated separately
     };
   }
 
-  private static async calculateStreak(): Promise<number> {
-    const allEntries = await MoodStorage.getAllMoodEntries();
-    if (allEntries.length === 0) return 0;
-
-    const sortedEntries = allEntries.sort((a, b) => b.timestamp - a.timestamp);
-    const uniqueDates = [...new Set(sortedEntries.map((entry) => entry.date))];
-
-    let streak = 0;
-    const today = new Date().toISOString().split("T")[0];
-    let currentDate = today;
-
-    for (const date of uniqueDates) {
-      if (date === currentDate) {
-        streak++;
-        currentDate = this.subtractDays(currentDate, 1);
-      } else {
-        break;
-      }
-    }
-
-    return streak;
+  static async calculateStreak(userId: string): Promise<number> {
+    return MoodDatabase.getCurrentStreak(userId);
   }
 
   private static addDays(dateString: string, days: number): string {

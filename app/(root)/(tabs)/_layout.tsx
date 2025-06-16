@@ -4,11 +4,12 @@ import {
   ImageSourcePropType,
   View,
   TouchableOpacity,
+  Animated,
 } from "react-native";
 import { icons } from "@/constants";
 import { BottomTabBarButtonProps } from "@react-navigation/bottom-tabs";
 import { useRouter } from "expo-router";
-import { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 
 const TabIcon = ({
   source,
@@ -34,7 +35,6 @@ const TabIcon = ({
 
 const Layout = () => {
   const router = useRouter();
-  // Inside your Layout component, add:
   useEffect(() => {
     console.log("Tabs layout mounted");
   }, []);
@@ -83,14 +83,6 @@ const Layout = () => {
 
       <Tabs.Screen
         name="chat"
-        // listeners={{
-        //   tabPress: (e) => {
-        //     // Prevent default behavior
-        //     e.preventDefault();
-        //     // Navigate to the chat screen
-        //     router.push("/(root)/(tabs)/chat");
-        //   },
-        // }}
         options={{
           title: "Chat",
           headerShown: false,
@@ -99,7 +91,6 @@ const Layout = () => {
             <CustomTabButton
               {...props}
               onPress={() => {
-                // Navigate to the chat screen with the correct path
                 router.push("/(root)/(tabs)/chat");
               }}
             />
@@ -132,12 +123,30 @@ const Layout = () => {
   );
 };
 
-// Extracted the custom button to a separate component for better organization
 interface CustomTabButtonProps extends BottomTabBarButtonProps {
   onPress?: () => void;
 }
 
 const CustomTabButton = ({ onPress }: CustomTabButtonProps) => {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.25,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, [pulseAnim]);
+
   return (
     <View
       style={{
@@ -149,6 +158,19 @@ const CustomTabButton = ({ onPress }: CustomTabButtonProps) => {
         top: -30,
       }}
     >
+      {/* Pulsating Glow */}
+      <Animated.View
+        style={{
+          position: "absolute",
+          width: 90,
+          height: 90,
+          borderRadius: 45,
+          backgroundColor: "#b6d47a",
+          opacity: 0.5,
+          zIndex: 0,
+          transform: [{ scale: pulseAnim }],
+        }}
+      />
       <TouchableOpacity
         style={{
           width: 70,
@@ -162,6 +184,7 @@ const CustomTabButton = ({ onPress }: CustomTabButtonProps) => {
           shadowOpacity: 0.3,
           shadowRadius: 6,
           elevation: 6,
+          zIndex: 1,
         }}
         activeOpacity={0.8}
         onPress={onPress}

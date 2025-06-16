@@ -20,6 +20,8 @@ import MaskedView from "@react-native-masked-view/masked-view";
 import type { MoodEntry } from "@/types/mood";
 import { MoodStorage } from "@/lib/mood-storage";
 import { MoodAnalytics } from "@/lib/mood-analytics";
+// Add this import at the top
+import DatabaseStatus from "@/components/database-status";
 
 const { width, height } = Dimensions.get("window");
 
@@ -116,9 +118,11 @@ export default function HomeScreen() {
   const slideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
-    loadData();
+    if (user) {
+      loadData();
+    }
     startAnimations();
-  }, []);
+  }, [user]);
 
   const startAnimations = () => {
     Animated.parallel([
@@ -136,9 +140,11 @@ export default function HomeScreen() {
   };
 
   const loadData = async () => {
+    if (!user) return;
+
     try {
       const today = new Date().toISOString().split("T")[0];
-      const mood = await MoodStorage.getMoodEntryForDate(today);
+      const mood = await MoodStorage.getMoodEntryForDate(user.id, today);
       setTodaysMood(mood);
 
       // Get recent moods (last 7 days)
@@ -146,13 +152,14 @@ export default function HomeScreen() {
       weekStart.setDate(weekStart.getDate() - 7);
       const weekStartStr = weekStart.toISOString().split("T")[0];
       const recent = await MoodStorage.getMoodEntriesForDateRange(
+        user.id,
         weekStartStr,
         today
       );
       setRecentMoods(recent.slice(0, 5));
 
       // Get weekly stats
-      const stats = await MoodAnalytics.getWeeklyStats(weekStartStr);
+      const stats = await MoodAnalytics.getWeeklyStats(user.id, weekStartStr);
       setWeeklyStats(stats);
 
       // Build sections
@@ -634,6 +641,9 @@ export default function HomeScreen() {
             </View>
           </View>
         </View>
+
+        {/* Database Status - Add this line */}
+        {/* <DatabaseStatus /> */}
 
         {/* Content - Using FlatList to avoid nesting issues */}
         <FlatList
