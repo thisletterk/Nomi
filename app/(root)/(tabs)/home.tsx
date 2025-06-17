@@ -20,8 +20,8 @@ import MaskedView from "@react-native-masked-view/masked-view";
 import type { MoodEntry } from "@/types/mood";
 import { MoodStorage } from "@/lib/mood-storage";
 import { MoodAnalytics } from "@/lib/mood-analytics";
-// Add this import at the top
 import DatabaseStatus from "@/components/database-status";
+import DatabaseInitializer from "@/components/database-initializer";
 
 const { width, height } = Dimensions.get("window");
 
@@ -642,8 +642,9 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Database Status - Add this line */}
+        {/* Database Status and Initializer here */}
         {/* <DatabaseStatus /> */}
+        {/* <DatabaseInitializer /> */}
 
         {/* Content - Using FlatList to avoid nesting issues */}
         <FlatList

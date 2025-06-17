@@ -31,12 +31,11 @@ export default function MoodSelector({
 }: MoodSelectorProps) {
   const { user } = useUser();
   const [selectedMood, setSelectedMood] = useState<MoodType | null>(
-    existingEntry?.mood || null
+    // Don't pre-fill from existing entry - start fresh each time
+    null
   );
-  const [intensity, setIntensity] = useState<number>(
-    existingEntry?.intensity || 3
-  );
-  const [note, setNote] = useState<string>(existingEntry?.note || "");
+  const [intensity, setIntensity] = useState<number>(3); // Always start at 3
+  const [note, setNote] = useState<string>(""); // Always start empty
   const [saving, setSaving] = useState(false);
   const [moodTypes, setMoodTypes] = useState<MoodType[]>(MOOD_TYPES);
   const [scaleAnim] = useState(new Animated.Value(1));
@@ -97,7 +96,8 @@ export default function MoodSelector({
       const today = new Date().toISOString().split("T")[0];
 
       const moodEntry: MoodEntry = {
-        id: existingEntry?.id || `mood_${Date.now()}_${user.id}`,
+        // Always generate a new ID - never reuse existing entry ID
+        id: `mood_${Date.now()}_${user.id}_${Math.random().toString(36).substring(2, 15)}`,
         userId: user.id,
         mood: selectedMood,
         intensity,
@@ -106,11 +106,10 @@ export default function MoodSelector({
         date: today,
       };
 
-      if (existingEntry) {
-        await MoodStorage.updateMoodEntry(existingEntry.id, moodEntry);
-      } else {
-        await MoodStorage.saveMoodEntry(moodEntry);
-      }
+      console.log("🚀 ALWAYS saving as NEW entry:", moodEntry);
+
+      // ALWAYS save as new entry - never update existing ones
+      await MoodStorage.saveMoodEntry(moodEntry);
 
       onMoodSaved?.(moodEntry);
 
@@ -122,7 +121,7 @@ export default function MoodSelector({
         `Your ${selectedMood.name.toLowerCase()} mood has been recorded for today.`
       );
 
-      // Reset form after successful save (for both new entries and updates)
+      // Reset form after successful save
       setTimeout(() => {
         resetForm();
       }, 100); // Small delay to ensure alert is shown first
@@ -146,7 +145,7 @@ export default function MoodSelector({
             marginBottom: 8,
           }}
         >
-          How are you feeling today?
+          How are you feeling right now?
         </Text>
         <Text
           style={{
@@ -266,6 +265,7 @@ export default function MoodSelector({
       )}
 
       {/* Note Input */}
+
       <View style={{ marginBottom: 30 }}>
         <Text
           style={{
@@ -341,7 +341,7 @@ export default function MoodSelector({
             />
           ) : (
             <Ionicons
-              name="checkmark-circle"
+              name="add-circle"
               size={20}
               color="#fff"
               style={{ marginRight: 8 }}
@@ -354,10 +354,23 @@ export default function MoodSelector({
               fontWeight: "bold",
             }}
           >
-            {saving ? "Saving..." : existingEntry ? "Update Mood" : "Save Mood"}
+            {saving ? "Saving..." : "Add New Mood Entry"}
           </Text>
         </LinearGradient>
       </TouchableOpacity>
+
+      {/* Info Text */}
+      <Text
+        style={{
+          color: "#6b7280",
+          fontSize: 12,
+          textAlign: "center",
+          marginTop: 15,
+          fontStyle: "italic",
+        }}
+      >
+        Each mood entry will be saved as a separate record
+      </Text>
     </View>
   );
 }

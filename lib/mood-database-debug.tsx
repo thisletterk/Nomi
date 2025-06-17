@@ -17,7 +17,9 @@ export class MoodDatabase {
   private static generateUniqueId(userId: string): string {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 15);
-    return `mood_${userId}_${timestamp}_${random}`;
+    const uniqueId = `mood_${userId}_${timestamp}_${random}`;
+    console.log("🆔 Generated unique ID:", uniqueId);
+    return uniqueId;
   }
 
   // Get all mood types
@@ -41,26 +43,41 @@ export class MoodDatabase {
     }
   }
 
-  // Save a new mood entry - ALWAYS creates a new record (no more overwrites!)
+  // Save a new mood entry - ALWAYS creates a new record
   static async saveMoodEntry(entry: MoodEntry): Promise<void> {
+    console.log(
+      "🔥 SAVE MOOD ENTRY CALLED - This should ALWAYS create a NEW record"
+    );
+    console.log("📝 Original entry data:", {
+      id: entry.id,
+      userId: entry.userId,
+      mood: entry.mood.name,
+      intensity: entry.intensity,
+      note: entry.note,
+      date: entry.date,
+    });
+
     if (!isDatabaseAvailable()) {
       throw new Error("Database not available. Cannot save mood entry.");
     }
 
-    // Generate a guaranteed unique ID to prevent any overwrites
+    // ALWAYS generate a new unique ID - ignore the passed ID
     const uniqueId = this.generateUniqueId(entry.userId);
-
-    console.log("🔄 Saving NEW mood entry with unique ID:", {
-      originalId: entry.id,
-      newUniqueId: uniqueId,
-      userId: entry.userId,
-      mood: entry.mood.name,
-      intensity: entry.intensity,
-      date: entry.date,
-    });
 
     try {
       const sql = this.getSql();
+
+      // Check if there are any existing entries for this user today
+      const existingEntries = await sql`
+        SELECT id, note, mood_type_id, intensity 
+        FROM mood_entries 
+        WHERE user_id = ${entry.userId} AND date = ${entry.date}
+      `;
+
+      console.log(
+        `📊 Found ${existingEntries.length} existing entries for ${entry.date}:`,
+        existingEntries
+      );
 
       // Validate intensity
       if (entry.intensity < 1 || entry.intensity > 5) {
@@ -69,8 +86,10 @@ export class MoodDatabase {
         );
       }
 
-      // Insert with the unique ID - this guarantees a new record every time
-      await sql`
+      console.log("🚀 Inserting NEW mood entry with unique ID:", uniqueId);
+
+      // Insert with the unique ID - this should create a new record
+      const result = await sql`
         INSERT INTO mood_entries (
           id, user_id, mood_type_id, intensity, note, date, timestamp
         ) VALUES (
@@ -82,26 +101,55 @@ export class MoodDatabase {
           ${entry.date}, 
           ${entry.timestamp}
         )
+        RETURNING id, created_at
       `;
 
-      console.log("✅ NEW mood entry saved successfully with ID:", uniqueId);
+      console.log("✅ NEW mood entry created successfully:", result[0]);
+
+      // Verify the entry was actually created
+      const verifyEntries = await sql`
+        SELECT COUNT(*) as count 
+        FROM mood_entries 
+        WHERE user_id = ${entry.userId} AND date = ${entry.date}
+      `;
+
+      console.log(
+        `📈 Total entries for ${entry.date} after insert:`,
+        verifyEntries[0].count
+      );
     } catch (error) {
       console.error("❌ Error saving mood entry:", error);
       throw error;
     }
   }
 
-  // Update an existing mood entry
+  // Update an existing mood entry - should only be called for actual updates
   static async updateMoodEntry(
     entryId: string,
     updates: Partial<MoodEntry>
   ): Promise<void> {
+    console.log(
+      "🔄 UPDATE MOOD ENTRY CALLED - This modifies an existing record"
+    );
+    console.log("📝 Update data:", { entryId, updates });
+
     if (!isDatabaseAvailable()) {
       throw new Error("Database not available. Cannot update mood entry.");
     }
 
     try {
       const sql = this.getSql();
+
+      // Check if the entry exists
+      const existingEntry = await sql`
+        SELECT * FROM mood_entries WHERE id = ${entryId}
+      `;
+
+      if (existingEntry.length === 0) {
+        throw new Error(`Mood entry with ID ${entryId} not found`);
+      }
+
+      console.log("📋 Existing entry before update:", existingEntry[0]);
 
       // Update mood type if provided
       if (updates.mood) {
@@ -110,6 +158,7 @@ export class MoodDatabase {
           SET mood_type_id = ${updates.mood.id}
           WHERE id = ${entryId}
         `;
+        console.log("✅ Updated mood type to:", updates.mood.name);
       }
 
       // Update intensity if provided
@@ -122,6 +171,7 @@ export class MoodDatabase {
           SET intensity = ${updates.intensity}
           WHERE id = ${entryId}
         `;
+        console.log("✅ Updated intensity to:", updates.intensity);
       }
 
       // Update note if provided
@@ -131,6 +181,7 @@ export class MoodDatabase {
           SET note = ${updates.note || null}
           WHERE id = ${entryId}
         `;
+        console.log("✅ Updated note to:", updates.note);
       }
 
       console.log("✅ Mood entry updated successfully:", entryId);
@@ -157,6 +208,7 @@ export class MoodDatabase {
           me.note,
           me.date,
           me.timestamp,
+          me.created_at,
           mt.id as mood_id,
           mt.name as mood_name,
           mt.emoji as mood_emoji,
@@ -165,8 +217,12 @@ export class MoodDatabase {
         FROM mood_entries me
         JOIN mood_types mt ON me.mood_type_id = mt.id
         WHERE me.user_id = ${userId}
-        ORDER BY me.timestamp DESC
+        ORDER BY me.created_at DESC, me.timestamp DESC
       `;
+
+      console.log(
+        `📊 Retrieved ${result.length} mood entries for user ${userId}`
+      );
 
       return result.map((row) => ({
         id: row.id,
@@ -243,11 +299,13 @@ export class MoodDatabase {
     }
   }
 
-  // Get mood entry for a specific date (returns the most recent one if multiple exist)
+  // Get mood entry for a specific date (returns the most recent one)
   static async getMoodEntryForDate(
     userId: string,
     date: string
   ): Promise<MoodEntry | null> {
+    console.log(`🔍 GET MOOD ENTRY FOR DATE CALLED - ${userId} on ${date}`);
+
     if (!isDatabaseAvailable()) {
       return null;
     }
@@ -273,6 +331,11 @@ export class MoodDatabase {
         ORDER BY me.timestamp DESC
         LIMIT 1
       `;
+
+      console.log(
+        `📊 Found ${result.length} entries for ${date}:`,
+        result.length > 0 ? result[0] : "none"
+      );
 
       if (result.length === 0) return null;
 

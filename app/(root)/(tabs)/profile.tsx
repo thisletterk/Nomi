@@ -591,7 +591,7 @@ export default function ProfileScreen() {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
-          contentContainerStyle={{ paddingBottom: 20 }}
+          contentContainerStyle={{ paddingBottom: 100 }}
         >
           {renderProfileHeader()}
           {renderStatsCards()}
