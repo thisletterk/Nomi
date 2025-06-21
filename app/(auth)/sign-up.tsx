@@ -14,10 +14,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { useSignUp } from "@clerk/clerk-expo";
+import { useSignUp, useOAuth } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
 import CustomButton from "@/components/CustomButton";
 import MaskedView from "@react-native-masked-view/masked-view";
+import { fetchAPI } from "@/lib/fetch";
 
 const GradientText = ({ text, style }: { text: string; style?: any }) => (
   <MaskedView
@@ -44,17 +45,43 @@ const GradientText = ({ text, style }: { text: string; style?: any }) => (
 
 export default function SignUpScreen() {
   const { signUp, setActive, isLoaded } = useSignUp();
+  const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
   const router = useRouter();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [pendingVerification, setPendingVerification] = useState(false);
+
+  const handleGoogleSignUp = async () => {
+    if (!isLoaded) return;
+
+    setGoogleLoading(true);
+    try {
+      const { createdSessionId, setActive: oauthSetActive } =
+        await startOAuthFlow();
+
+      if (createdSessionId && oauthSetActive) {
+        await oauthSetActive({ session: createdSessionId });
+        router.replace("/(root)/(tabs)/home");
+      }
+    } catch (error: any) {
+      console.error("Google sign up error:", error);
+      Alert.alert(
+        "Google Sign Up Failed",
+        error?.message || "Please try again."
+      );
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   const handleSignUp = async () => {
     if (!isLoaded) return;
@@ -81,11 +108,20 @@ export default function SignUpScreen() {
 
     setLoading(true);
     try {
+      // Always generate a username - either from user input or email
+      const finalUsername = username.trim() || email.split("@")[0];
+
+      // Update the username state so it's available for database creation
+      if (!username.trim()) {
+        setUsername(finalUsername);
+      }
+
       await signUp.create({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         emailAddress: email.trim(),
         password: password,
+        username: finalUsername,
       });
 
       await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
@@ -94,7 +130,7 @@ export default function SignUpScreen() {
       console.error("Sign up error:", error);
       Alert.alert(
         "Sign Up Failed",
-        error.errors?.[0]?.message || "Please try again."
+        error?.errors?.[0]?.message || "Please try again."
       );
     } finally {
       setLoading(false);
@@ -115,20 +151,97 @@ export default function SignUpScreen() {
         code: verificationCode.trim(),
       });
 
+      console.log("Complete signup response:", {
+        status: completeSignUp.status,
+      });
+
       if (completeSignUp.status === "complete") {
         await setActive({ session: completeSignUp.createdSessionId });
+
+        const userId = completeSignUp.createdUserId;
+        await createUserInDatabase(userId);
+
         router.replace("/(root)/(tabs)/home");
       } else {
-        Alert.alert("Error", "Verification incomplete. Please try again.");
+        console.log("Signup status:", completeSignUp.status);
+
+        Alert.alert(
+          "Verification Incomplete",
+          "Please ensure all required information is provided. If the issue persists, try signing up again.",
+          [
+            {
+              text: "Try Again",
+              onPress: () => setPendingVerification(false),
+            },
+            {
+              text: "Continue",
+              onPress: () => {
+                if (completeSignUp.createdSessionId) {
+                  setActive({ session: completeSignUp.createdSessionId })
+                    .then(() => {
+                      if (completeSignUp.createdUserId) {
+                        return createUserInDatabase(
+                          completeSignUp.createdUserId
+                        );
+                      }
+                    })
+                    .then(() => {
+                      router.replace("/(root)/(tabs)/home");
+                    })
+                    .catch((err) => {
+                      console.error("Error in continue flow:", err);
+                      Alert.alert("Error", "Please try signing up again.");
+                    });
+                }
+              },
+            },
+          ]
+        );
       }
     } catch (error: any) {
       console.error("Verification error:", error);
       Alert.alert(
         "Verification Failed",
-        error.errors?.[0]?.message || "Please check your code and try again."
+        error?.errors?.[0]?.message || "Please check your code and try again."
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const createUserInDatabase = async (
+    clerkUserId: string | null | undefined
+  ) => {
+    if (!clerkUserId) {
+      console.error("No Clerk user ID provided");
+      return;
+    }
+
+    try {
+      const finalUsername = username.trim() || email.split("@")[0];
+
+      const response = await fetchAPI(`/(api)/user`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          firstname: firstName.trim(),
+          lastname: lastName.trim(),
+          username: finalUsername,
+          email: email.trim(),
+          clerkId: clerkUserId,
+        }),
+      });
+
+      console.log("User created in database:", response);
+    } catch (dbError) {
+      console.error("Failed to create user in DB:", dbError);
+      Alert.alert(
+        "Account Created",
+        "Your account was created successfully, but there was an issue saving additional details. You can still continue.",
+        [{ text: "Continue" }]
+      );
     }
   };
 
@@ -142,7 +255,6 @@ export default function SignUpScreen() {
           <View
             style={{ flex: 1, justifyContent: "center", paddingHorizontal: 20 }}
           >
-            {/* Header */}
             <View style={{ alignItems: "center", marginBottom: 40 }}>
               <View
                 style={{
@@ -169,7 +281,6 @@ export default function SignUpScreen() {
               </Text>
             </View>
 
-            {/* Verification Code Input */}
             <View style={{ marginBottom: 30 }}>
               <Text
                 style={{
@@ -213,7 +324,6 @@ export default function SignUpScreen() {
               </View>
             </View>
 
-            {/* Verify Button */}
             <CustomButton
               title="Verify Email"
               onPress={handleVerification}
@@ -222,11 +332,9 @@ export default function SignUpScreen() {
               size="large"
             />
 
-            {/* Resend Code */}
             <TouchableOpacity
               style={{ alignSelf: "center", marginTop: 20 }}
               onPress={() => {
-                // Resend verification code logic
                 signUp?.prepareEmailAddressVerification({
                   strategy: "email_code",
                 });
@@ -237,7 +345,6 @@ export default function SignUpScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* Back to Sign Up */}
             <TouchableOpacity
               style={{ alignSelf: "center", marginTop: 20 }}
               onPress={() => setPendingVerification(false)}
@@ -272,7 +379,6 @@ export default function SignUpScreen() {
             }}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Header */}
             <View style={{ alignItems: "center", marginBottom: 40 }}>
               <View
                 style={{
@@ -298,9 +404,60 @@ export default function SignUpScreen() {
               </Text>
             </View>
 
-            {/* Form */}
+            <TouchableOpacity
+              onPress={handleGoogleSignUp}
+              disabled={googleLoading}
+              style={{
+                backgroundColor: "#fff",
+                borderRadius: 12,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: 16,
+                marginBottom: 30,
+                opacity: googleLoading ? 0.7 : 1,
+              }}
+            >
+              <Ionicons
+                name="logo-google"
+                size={20}
+                color="#4285f4"
+                style={{ marginRight: 12 }}
+              />
+              <Text
+                style={{ color: "#374151", fontSize: 16, fontWeight: "600" }}
+              >
+                {googleLoading
+                  ? "Signing up with Google..."
+                  : "Continue with Google"}
+              </Text>
+            </TouchableOpacity>
+
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 30,
+              }}
+            >
+              <View
+                style={{ flex: 1, height: 1, backgroundColor: "#4b5563" }}
+              />
+              <Text
+                style={{
+                  color: "#9ca3af",
+                  paddingHorizontal: 16,
+                  fontSize: 14,
+                }}
+              >
+                or
+              </Text>
+              <View
+                style={{ flex: 1, height: 1, backgroundColor: "#4b5563" }}
+              />
+            </View>
+
             <View style={{ marginBottom: 30 }}>
-              {/* Name Inputs */}
               <View style={{ flexDirection: "row", gap: 12, marginBottom: 20 }}>
                 <View style={{ flex: 1 }}>
                   <Text
@@ -383,7 +540,47 @@ export default function SignUpScreen() {
                 </View>
               </View>
 
-              {/* Email Input */}
+              <View style={{ marginBottom: 20 }}>
+                <Text
+                  style={{
+                    color: "#e5e7eb",
+                    fontSize: 16,
+                    fontWeight: "500",
+                    marginBottom: 8,
+                  }}
+                >
+                  Username (Optional)
+                </Text>
+                <View
+                  style={{
+                    backgroundColor: "#374151",
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: "#4b5563",
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingHorizontal: 16,
+                  }}
+                >
+                  <Ionicons name="at" size={20} color="#9ca3af" />
+                  <TextInput
+                    value={username}
+                    onChangeText={setUsername}
+                    placeholder="Choose a username"
+                    placeholderTextColor="#6b7280"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    style={{
+                      flex: 1,
+                      color: "#fff",
+                      fontSize: 16,
+                      paddingVertical: 16,
+                      paddingLeft: 12,
+                    }}
+                  />
+                </View>
+              </View>
+
               <View style={{ marginBottom: 20 }}>
                 <Text
                   style={{
@@ -426,7 +623,6 @@ export default function SignUpScreen() {
                 </View>
               </View>
 
-              {/* Password Input */}
               <View style={{ marginBottom: 20 }}>
                 <Text
                   style={{
@@ -478,7 +674,6 @@ export default function SignUpScreen() {
                 </View>
               </View>
 
-              {/* Confirm Password Input */}
               <View style={{ marginBottom: 20 }}>
                 <Text
                   style={{
@@ -531,7 +726,6 @@ export default function SignUpScreen() {
               </View>
             </View>
 
-            {/* Sign Up Button */}
             <CustomButton
               title="Create Account"
               onPress={handleSignUp}
@@ -546,7 +740,6 @@ export default function SignUpScreen() {
               size="large"
             />
 
-            {/* Sign In Link */}
             <View
               style={{
                 flexDirection: "row",
