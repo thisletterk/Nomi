@@ -173,7 +173,11 @@ export default function MoodSelector({
       console.error("❌ Error saving mood:", error);
       Alert.alert(
         "Error",
-        `Failed to save your mood: ${error.message || "Please try again."}`
+        `Failed to save your mood: ${
+          typeof error === "object" && error !== null && "message" in error
+            ? (error as { message?: string }).message
+            : "Please try again."
+        }`
       );
     } finally {
       setSaving(false);
@@ -183,7 +187,7 @@ export default function MoodSelector({
   return (
     <View style={{ flex: 1, padding: 20 }}>
       {/* Debug Info */}
-      {__DEV__ && (
+      {/* {__DEV__ && (
         <TouchableOpacity
           onPress={debugCurrentState}
           style={{
@@ -197,7 +201,7 @@ export default function MoodSelector({
             🔍 Debug Database (Dev Only)
           </Text>
         </TouchableOpacity>
-      )}
+      )} */}
 
       {/* Header */}
       <View style={{ alignItems: "center", marginBottom: 30 }}>

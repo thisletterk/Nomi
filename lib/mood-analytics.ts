@@ -154,6 +154,69 @@ export class MoodAnalytics {
     }
   }
 
+  // NEW: Simple mood summary in the format you specified
+  static async getSimpleMoodSummary(
+    userId: string,
+    limit = 5
+  ): Promise<string> {
+    try {
+      console.log(`🧠 Getting simple mood summary for ${userId}`);
+      const allEntries = await MoodDatabase.getAllMoodEntries(userId);
+      const recentMoods = allEntries.slice(0, limit);
+
+      if (recentMoods.length === 0) {
+        console.log("🧠 No recent moods found");
+        return "";
+      }
+
+      console.log(`🧠 Found ${recentMoods.length} recent moods`);
+
+      const moodSummary = recentMoods
+        .map((entry) => {
+          let dateStr = "Recent";
+
+          try {
+            if (
+              entry.timestamp &&
+              typeof entry.timestamp === "number" &&
+              entry.timestamp > 0
+            ) {
+              const date = new Date(entry.timestamp);
+              if (!isNaN(date.getTime())) {
+                dateStr = date.toLocaleDateString("en-US", {
+                  day: "numeric",
+                  month: "long",
+                });
+              }
+            }
+
+            if (dateStr === "Recent" && entry.date) {
+              const date = new Date(entry.date);
+              if (!isNaN(date.getTime())) {
+                dateStr = date.toLocaleDateString("en-US", {
+                  day: "numeric",
+                  month: "long",
+                });
+              }
+            }
+          } catch (error) {
+            console.log("🧠 Date parsing error for entry:", entry.id, error);
+            dateStr = "Recent";
+          }
+
+          const note = entry.note ? ` — "${entry.note}"` : "";
+          return `- ${entry.mood.emoji} ${entry.mood.name} (${entry.intensity}/5) on ${dateStr}${note}`;
+        })
+        .join("\n");
+
+      console.log("🧠 Simple mood summary generated:", moodSummary);
+      return moodSummary;
+    } catch (error) {
+      console.error("❌ Error getting simple mood summary:", error);
+      return "";
+    }
+  }
+
   // Enhanced mood context with emotional intelligence
   static async getDetailedMoodContext(userId: string): Promise<string> {
     try {
@@ -164,7 +227,7 @@ export class MoodAnalytics {
         return "No mood history available yet. This is a great time to start tracking your emotional journey!";
       }
 
-      // Get recent entries (last 7 days)
+      // Get recent entries (last 10 for analysis)
       const recentEntries = allEntries.slice(0, 10);
       const last7Days = allEntries.filter((entry) => {
         const entryDate = new Date(entry.timestamp);
@@ -227,7 +290,7 @@ export class MoodAnalytics {
       .slice(0, 3)
       .map((entry) => `"${entry.note}" (${entry.mood.name})`);
 
-    // Build contextual analysis
+    // Build contextual analysis with cognitive wellness language
     let context = "EMOTIONAL CONTEXT:\n";
 
     // Current state
@@ -242,11 +305,11 @@ export class MoodAnalytics {
     if (yesterdaysMood && todaysMood) {
       const change = todaysMood.mood.value - yesterdaysMood.mood.value;
       if (change > 0) {
-        context += `Mood improved from yesterday (${yesterdaysMood.mood.name} → ${todaysMood.mood.name})\n`;
+        context += `Positive shift from yesterday (${yesterdaysMood.mood.name} → ${todaysMood.mood.name})\n`;
       } else if (change < 0) {
-        context += `Mood declined from yesterday (${yesterdaysMood.mood.name} → ${todaysMood.mood.name})\n`;
+        context += `Mood shifted from yesterday (${yesterdaysMood.mood.name} → ${todaysMood.mood.name})\n`;
       } else {
-        context += `Mood stable from yesterday (${todaysMood.mood.name})\n`;
+        context += `Consistent mood from yesterday (${todaysMood.mood.name})\n`;
       }
     }
 
@@ -260,7 +323,7 @@ export class MoodAnalytics {
       } else if (weeklyAverage <= 2) {
         context += "(Challenging week)\n";
       } else {
-        context += "(Mixed week)\n";
+        context += "(Balanced week)\n";
       }
 
       if (dominantMoodType) {
@@ -276,35 +339,39 @@ export class MoodAnalytics {
       });
     }
 
-    // Emotional insights
-    context += `\nEMOTIONAL INSIGHTS:\n`;
+    // Cognitive wellness insights
+    context += `\nCOGNITIVE WELLNESS INSIGHTS:\n`;
 
     if (weeklyAverage >= 4) {
-      context += "- User has been in a positive emotional state\n";
-      context += "- Good time to explore goals and growth\n";
+      context += "- User has been experiencing positive emotional momentum\n";
+      context += "- Good time to explore growth opportunities and goals\n";
+      context += "- Focus on maintaining positive habits and mindset\n";
     } else if (weeklyAverage <= 2) {
-      context += "- User may be going through a difficult period\n";
-      context += "- Needs extra support and validation\n";
-      context += "- Focus on coping strategies and self-care\n";
+      context += "- User may be navigating some challenges\n";
+      context += "- Needs supportive, gentle conversation\n";
+      context += "- Focus on resilience building and self-compassion\n";
     } else {
       context += "- User experiencing normal emotional fluctuations\n";
-      context += "- Good balance of support and encouragement\n";
+      context += "- Balance of support and encouragement appropriate\n";
+      context += "- Good opportunity for reflection and growth\n";
     }
 
     // Streak information
     const streak = last7Days.length;
     if (streak >= 7) {
-      context += `- Excellent mood tracking consistency (${streak} days)\n`;
+      context += `- Excellent self-awareness consistency (${streak} days)\n`;
     } else if (streak >= 3) {
-      context += `- Good tracking habit developing (${streak} recent entries)\n`;
+      context += `- Building good self-reflection habits (${streak} recent entries)\n`;
     }
 
-    context += `\nUSE THIS CONTEXT TO:\n`;
-    context += `- Reference specific moods and notes naturally\n`;
-    context += `- Acknowledge emotional patterns you notice\n`;
+    context += `\nCONVERSATION APPROACH:\n`;
+    context += `- Reference specific moods and notes naturally in conversation\n`;
+    context += `- Acknowledge emotional patterns you notice with curiosity, not analysis\n`;
     context += `- Provide appropriate support based on recent trends\n`;
-    context += `- Celebrate improvements or offer comfort during difficult times\n`;
-    context += `- Ask thoughtful follow-up questions about their experiences\n`;
+    context += `- Celebrate positive shifts or offer gentle support during challenges\n`;
+    context += `- Ask thoughtful questions about their experiences and insights\n`;
+    context += `- Use cognitive wellness language, not mental health terminology\n`;
+    context += `- Be a supportive companion, not a therapist or diagnostician\n`;
 
     return context;
   }
@@ -370,6 +437,99 @@ export class MoodAnalytics {
     }
   }
 
+  // Generate gentle weekly insights with cognitive wellness language
+  static async getWeeklyInsights(userId: string): Promise<string[]> {
+    try {
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - 7);
+      const weekStartStr = weekStart.toISOString().split("T")[0];
+
+      const thisWeekStats = await this.getWeeklyStats(userId, weekStartStr);
+
+      // Get previous week for comparison
+      const prevWeekStart = new Date(weekStart);
+      prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+      const prevWeekStartStr = prevWeekStart.toISOString().split("T")[0];
+      const prevWeekStats = await this.getWeeklyStats(userId, prevWeekStartStr);
+
+      const insights: string[] = [];
+
+      if (thisWeekStats.totalEntries === 0) {
+        insights.push(
+          "🌱 Ready to start tracking your emotional patterns this week?"
+        );
+        return insights;
+      }
+
+      // Compare weeks if we have previous data
+      if (prevWeekStats.totalEntries > 0) {
+        const moodDifference =
+          thisWeekStats.averageMood - prevWeekStats.averageMood;
+
+        if (moodDifference > 0.5) {
+          insights.push(
+            "🌟 This week you've been more optimistic than last week"
+          );
+          insights.push(
+            "💡 Consider what positive habits or mindset shifts contributed to this upward trend"
+          );
+        } else if (moodDifference < -0.5) {
+          insights.push("🌊 This week has felt different from last week");
+          insights.push(
+            "🤗 Remember that emotional waves are natural - what small comfort can you give yourself?"
+          );
+        } else {
+          insights.push(
+            "⚖️ You've maintained a steady emotional rhythm this week"
+          );
+          insights.push(
+            "🎯 This consistency shows good self-awareness - keep nurturing that balance"
+          );
+        }
+      } else {
+        // First week insights
+        if (thisWeekStats.averageMood >= 4) {
+          insights.push(
+            "✨ You've been experiencing positive energy this week"
+          );
+          insights.push(
+            "🌱 Consider what daily practices are supporting this positive momentum"
+          );
+        } else if (thisWeekStats.averageMood <= 2) {
+          insights.push("🤗 This week has brought some challenges");
+          insights.push(
+            "💙 Small acts of self-compassion can make a big difference during tough times"
+          );
+        } else {
+          insights.push(
+            "🌈 You've experienced a natural range of emotions this week"
+          );
+          insights.push(
+            "🎯 This emotional variety shows healthy self-awareness"
+          );
+        }
+      }
+
+      // Consistency insights
+      if (thisWeekStats.streak >= 7) {
+        insights.push(
+          "🔥 Your consistent self-reflection is building strong emotional awareness"
+        );
+      } else if (thisWeekStats.totalEntries >= 4) {
+        insights.push(
+          "📈 You're developing a good rhythm of checking in with yourself"
+        );
+      }
+
+      return insights.slice(0, 2); // Return max 2 insights to keep it simple
+    } catch (error) {
+      console.error("❌ Error getting weekly insights:", error);
+      return [
+        "🌱 Your emotional journey is unique - keep exploring what works for you",
+      ];
+    }
+  }
+
   // Debug method
   static async debugAnalytics(userId: string): Promise<void> {
     try {
@@ -407,6 +567,12 @@ export class MoodAnalytics {
           "🔍 Detailed mood context:",
           context.substring(0, 300) + "..."
         );
+
+        const simpleSummary = await this.getSimpleMoodSummary(userId);
+        console.log("🔍 Simple mood summary:", simpleSummary);
+
+        const insights = await this.getWeeklyInsights(userId);
+        console.log("🔍 Weekly insights:", insights);
       }
       console.log("🔍 === END DEBUG ===");
     } catch (error) {

@@ -18,35 +18,6 @@ import * as FileSystem from "expo-file-system";
 
 const { width, height } = Dimensions.get("window");
 
-// Enhanced system prompt for voice conversations
-const DEFAULT_SYSTEM_PROMPT = {
-  role: "system",
-  content: `You are Nomi, a compassionate voice companion for mental wellness. In voice conversations:
-
-VOICE PERSONALITY:
-- Speak naturally and conversationally, like a caring friend
-- Use a warm, gentle tone that feels safe and non-judgmental
-- Keep responses concise but meaningful (1-3 sentences typically)
-- Use natural speech patterns with appropriate pauses
-- Show genuine interest and empathy in your voice responses
-
-CONVERSATION APPROACH:
-- Listen actively and respond to the emotional undertone
-- Ask one thoughtful follow-up question to keep dialogue flowing
-- Validate feelings before offering any insights
-- Use phrases like "I hear you saying..." or "That sounds..."
-- Be present and engaged, not robotic or clinical
-
-MENTAL HEALTH FOCUS:
-- Create a safe space for emotional expression
-- Encourage self-reflection through gentle questions
-- Offer coping strategies when appropriate
-- Recognize when someone needs professional support
-- Celebrate small steps and progress
-
-Keep responses natural and conversational for voice interaction.`,
-};
-
 interface VoiceChatOverlayProps {
   visible: boolean;
   onClose: () => void;
@@ -56,7 +27,7 @@ interface VoiceChatOverlayProps {
 export default function VoiceChatOverlay({
   visible,
   onClose,
-  systemPrompt = DEFAULT_SYSTEM_PROMPT,
+  systemPrompt,
 }: VoiceChatOverlayProps) {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -65,25 +36,25 @@ export default function VoiceChatOverlay({
   const [currentTranscript, setCurrentTranscript] = useState("");
   const [aiResponse, setAiResponse] = useState("");
   const [sessionDuration, setSessionDuration] = useState(0);
+  const [isRealTimeMode, setIsRealTimeMode] = useState(true);
 
   const recordingRef = useRef<Audio.Recording | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isActiveRef = useRef(false);
+  const soundRef = useRef<Audio.Sound | null>(null);
 
-  // Enhanced animations
+  // Enhanced animations for natural feel
   const orbScale = useRef(new Animated.Value(1)).current;
   const orbOpacity = useRef(new Animated.Value(0.9)).current;
   const pulseRing1 = useRef(new Animated.Value(1)).current;
   const pulseRing2 = useRef(new Animated.Value(1)).current;
   const pulseRing3 = useRef(new Animated.Value(1)).current;
-
-  // Breathing animation for relaxation
   const breatheScale = useRef(new Animated.Value(1)).current;
 
-  // Waveform for listening state
+  // Real-time waveform for natural conversation feel
   const waveHeights = useRef(
-    Array.from({ length: 24 }, () => new Animated.Value(0.3))
+    Array.from({ length: 20 }, () => new Animated.Value(0.2))
   ).current;
 
   useEffect(() => {
@@ -132,6 +103,15 @@ export default function VoiceChatOverlay({
       sessionTimerRef.current = null;
     }
 
+    if (soundRef.current) {
+      try {
+        await soundRef.current.unloadAsync();
+      } catch (error) {
+        console.log("Sound cleanup error:", error);
+      }
+      soundRef.current = null;
+    }
+
     if (recordingRef.current) {
       try {
         const status = await recordingRef.current.getStatusAsync();
@@ -139,7 +119,7 @@ export default function VoiceChatOverlay({
           await recordingRef.current.stopAndUnloadAsync();
         }
       } catch (error) {
-        console.log("Error cleaning up recording:", error);
+        console.log("Recording cleanup error:", error);
       }
       recordingRef.current = null;
     }
@@ -148,16 +128,18 @@ export default function VoiceChatOverlay({
     setIsProcessing(false);
     setIsPlaying(false);
     setSessionDuration(0);
+    setCurrentTranscript("");
+    setAiResponse("");
   };
 
   const initializeAudio = async () => {
     try {
-      console.log("🎤 Initializing voice chat...");
+      console.log("🎤 Initializing natural voice chat...");
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== "granted") {
         Alert.alert(
           "Microphone Access",
-          "Voice chat needs microphone access to work properly."
+          "I need microphone access so we can have a natural conversation!"
         );
         return;
       }
@@ -167,16 +149,18 @@ export default function VoiceChatOverlay({
         playsInSilentModeIOS: true,
         shouldDuckAndroid: true,
         playThroughEarpieceAndroid: false,
+        staysActiveInBackground: false,
       });
 
+      // Start listening immediately for natural flow
       setTimeout(() => {
         if (isActiveRef.current) {
           startListening();
         }
-      }, 1000);
+      }, 800);
     } catch (error) {
       console.error("❌ Audio initialization failed:", error);
-      Alert.alert("Audio Error", "Unable to initialize voice chat");
+      Alert.alert("Audio Error", "Unable to start our conversation");
     }
   };
 
@@ -191,7 +175,7 @@ export default function VoiceChatOverlay({
         recordingRef.current = null;
       }
 
-      console.log("🎙️ Starting to listen...");
+      console.log("🎙️ Listening naturally...");
       const { recording } = await Audio.Recording.createAsync({
         ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
         android: {
@@ -199,14 +183,14 @@ export default function VoiceChatOverlay({
           outputFormat: Audio.AndroidOutputFormat.MPEG_4,
           audioEncoder: Audio.AndroidAudioEncoder.AAC,
           sampleRate: 44100,
-          numberOfChannels: 2,
+          numberOfChannels: 1,
           bitRate: 128000,
         },
         ios: {
           extension: ".m4a",
           audioQuality: Audio.IOSAudioQuality.HIGH,
           sampleRate: 44100,
-          numberOfChannels: 2,
+          numberOfChannels: 1,
           bitRate: 128000,
         },
       });
@@ -216,14 +200,14 @@ export default function VoiceChatOverlay({
       setCurrentTranscript("");
       setAiResponse("");
 
-      // Auto-stop after 10 seconds for better conversation flow
+      // Longer timeout for natural conversation pauses
       timeoutRef.current = setTimeout(() => {
-        console.log("⏰ Auto-stopping recording");
+        console.log("⏰ Natural pause detected, processing...");
         stopAndProcessRecording();
-      }, 10000);
+      }, 8000); // 8 seconds feels more natural
     } catch (error) {
-      console.error("❌ Failed to start recording:", error);
-      Alert.alert("Recording Error", "Unable to start voice recording");
+      console.error("❌ Failed to start listening:", error);
+      Alert.alert("Listening Error", "I'm having trouble hearing you");
       setIsListening(false);
     }
   };
@@ -240,7 +224,7 @@ export default function VoiceChatOverlay({
     setIsProcessing(true);
 
     try {
-      console.log("🛑 Processing voice input...");
+      console.log("🛑 Processing what you said...");
       const recording = recordingRef.current;
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
@@ -248,18 +232,19 @@ export default function VoiceChatOverlay({
       if (uri) {
         await transcribeAudio(uri);
       } else {
-        console.log("❌ No audio recorded");
+        console.log("❌ Didn't catch that");
         setIsProcessing(false);
+        // Shorter delay for natural flow
         setTimeout(() => {
           if (isActiveRef.current) startListening();
-        }, 1500);
+        }, 1000);
       }
     } catch (error) {
-      console.error("❌ Error processing recording:", error);
+      console.error("❌ Error processing what you said:", error);
       setIsProcessing(false);
       setTimeout(() => {
         if (isActiveRef.current) startListening();
-      }, 1500);
+      }, 1000);
     } finally {
       recordingRef.current = null;
     }
@@ -268,7 +253,7 @@ export default function VoiceChatOverlay({
   const transcribeAudio = async (audioUri: string) => {
     try {
       if (!process.env.EXPO_PUBLIC_OPENAI_API_KEY) {
-        Alert.alert("Configuration Error", "OpenAI API key not found");
+        Alert.alert("Configuration Error", "Can't connect right now");
         setIsProcessing(false);
         return;
       }
@@ -277,12 +262,13 @@ export default function VoiceChatOverlay({
       formData.append("file", {
         uri: audioUri,
         type: "audio/m4a",
-        name: "voice-input.m4a",
+        name: "voice.m4a",
       } as any);
       formData.append("model", "whisper-1");
       formData.append("language", "en");
+      formData.append("temperature", "0.2"); // More accurate transcription
 
-      console.log("📤 Transcribing audio...");
+      console.log("📤 Understanding what you said...");
       const transcriptionResponse = await axios.post(
         "https://api.openai.com/v1/audio/transcriptions",
         formData,
@@ -291,21 +277,21 @@ export default function VoiceChatOverlay({
             Authorization: `Bearer ${process.env.EXPO_PUBLIC_OPENAI_API_KEY}`,
             "Content-Type": "multipart/form-data",
           },
-          timeout: 30000,
+          timeout: 20000,
         }
       );
 
       const transcript = transcriptionResponse.data.text.trim();
-      console.log("📝 Transcript:", transcript);
+      console.log("📝 You said:", transcript);
       setCurrentTranscript(transcript);
 
-      if (!transcript || transcript.length < 3) {
-        console.log("⚠️ Transcript too short, continuing...");
+      if (!transcript || transcript.length < 2) {
+        console.log("⚠️ Didn't catch that, let's continue...");
         setIsProcessing(false);
         setTimeout(() => {
           setCurrentTranscript("");
           if (isActiveRef.current) startListening();
-        }, 1000);
+        }, 800);
         return;
       }
 
@@ -317,39 +303,56 @@ export default function VoiceChatOverlay({
       await getAIResponse(newHistory);
     } catch (error) {
       console.error("❌ Transcription error:", error);
-      Alert.alert(
-        "Voice Processing Error",
-        "Unable to process your voice input"
-      );
       setIsProcessing(false);
       setTimeout(() => {
         if (isActiveRef.current) startListening();
-      }, 2000);
+      }, 1500);
     }
   };
 
   const getAIResponse = async (history: any[]) => {
     try {
-      console.log("🧠 Getting AI response...");
+      console.log("🧠 Thinking of response...");
+
+      // Use the same natural system prompt from text chat
+      const voiceSystemPrompt = systemPrompt || {
+        role: "system",
+        content: `You are a warm, emotionally intelligent friend having a natural voice conversation.
+
+Keep responses:
+- Conversational and natural (like talking to a close friend)
+- Brief but meaningful (1-2 sentences for voice)
+- Warm and supportive without being clinical
+- Curious and engaging to keep conversation flowing
+
+Avoid:
+- Long explanations or lists
+- Clinical or therapeutic language
+- Overly formal responses
+
+Respond as if you're having a casual, caring conversation with a friend.`,
+      };
+
       const response = await axios.post(
         "https://api.openai.com/v1/chat/completions",
         {
           model: "gpt-4o-mini",
-          messages: [systemPrompt, ...history],
-          temperature: 0.8,
-          max_tokens: 200, // Shorter responses for voice
+          messages: [voiceSystemPrompt, ...history],
+          temperature: 0.9,
+          max_tokens: 100, // Reduced for faster responses
+          stream: false, // Keep false for voice but optimize tokens
         },
         {
           headers: {
             Authorization: `Bearer ${process.env.EXPO_PUBLIC_OPENAI_API_KEY}`,
             "Content-Type": "application/json",
           },
-          timeout: 30000,
+          timeout: 15000, // Reduced timeout
         }
       );
 
       const aiText = response.data.choices[0].message.content.trim();
-      console.log("💬 AI response:", aiText);
+      console.log("💬 Responding:", aiText);
       setAiResponse(aiText);
       setConversationHistory([
         ...history,
@@ -359,7 +362,6 @@ export default function VoiceChatOverlay({
       await speakText(aiText);
     } catch (error) {
       console.error("❌ AI response error:", error);
-      Alert.alert("AI Error", "Unable to generate response");
       setIsProcessing(false);
       setTimeout(() => {
         if (isActiveRef.current) startListening();
@@ -372,14 +374,14 @@ export default function VoiceChatOverlay({
       setIsProcessing(false);
       setIsPlaying(true);
 
-      console.log("🔊 Converting to speech...");
+      console.log("🔊 Speaking naturally...");
       const ttsResponse = await axios.post(
         "https://api.openai.com/v1/audio/speech",
         {
-          model: "tts-1-hd",
+          model: "tts-1", // Faster model instead of tts-1-hd
           input: text,
-          voice: "nova", // Warmer, more empathetic voice
-          speed: 0.9,
+          voice: "nova",
+          speed: 1.0, // Normal speed for clarity
         },
         {
           headers: {
@@ -387,7 +389,7 @@ export default function VoiceChatOverlay({
             "Content-Type": "application/json",
           },
           responseType: "arraybuffer",
-          timeout: 30000,
+          timeout: 15000, // Reduced timeout
         }
       );
 
@@ -398,22 +400,24 @@ export default function VoiceChatOverlay({
       });
 
       const { sound } = await Audio.Sound.createAsync({ uri: fileUri });
+      soundRef.current = sound;
 
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
-          console.log("✅ Speech finished");
+          console.log("✅ Finished speaking");
           setIsPlaying(false);
+          setAiResponse("");
+          // Quick transition back to listening for natural flow
           setTimeout(() => {
             if (isActiveRef.current) startListening();
-          }, 1500);
+          }, 800);
         }
       });
 
-      console.log("▶️ Playing speech...");
+      console.log("▶️ Speaking...");
       await sound.playAsync();
     } catch (error) {
-      console.error("❌ Text-to-speech error:", error);
-      Alert.alert("Speech Error", "Unable to play AI response");
+      console.error("❌ Speech error:", error);
       setIsPlaying(false);
       setTimeout(() => {
         if (isActiveRef.current) startListening();
@@ -421,34 +425,18 @@ export default function VoiceChatOverlay({
     }
   };
 
-  // Enhanced animations
+  // Natural, flowing animations
   const startIdleAnimations = () => {
-    // Gentle breathing animation
     Animated.loop(
       Animated.sequence([
         Animated.timing(breatheScale, {
-          toValue: 1.05,
-          duration: 3000,
+          toValue: 1.03,
+          duration: 2500,
           useNativeDriver: true,
         }),
         Animated.timing(breatheScale, {
           toValue: 1,
-          duration: 3000,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseRing1, {
-          toValue: 1.1,
-          duration: 4000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseRing1, {
-          toValue: 1,
-          duration: 4000,
+          duration: 2500,
           useNativeDriver: true,
         }),
       ])
@@ -456,54 +444,54 @@ export default function VoiceChatOverlay({
   };
 
   const startListeningAnimations = () => {
-    // Active listening pulse
+    // Gentle listening pulse
     Animated.loop(
       Animated.sequence([
         Animated.timing(orbScale, {
-          toValue: 1.2,
-          duration: 600,
+          toValue: 1.15,
+          duration: 800,
           useNativeDriver: true,
         }),
         Animated.timing(orbScale, {
-          toValue: 1.1,
-          duration: 600,
+          toValue: 1.05,
+          duration: 800,
           useNativeDriver: true,
         }),
       ])
     ).start();
 
-    // Waveform animation
+    // Natural waveform
     waveHeights.forEach((height, index) => {
       Animated.loop(
         Animated.sequence([
-          Animated.delay(index * 50),
+          Animated.delay(index * 30),
           Animated.timing(height, {
-            toValue: Math.random() * 0.7 + 0.5,
-            duration: 200 + Math.random() * 300,
+            toValue: Math.random() * 0.8 + 0.4,
+            duration: 150 + Math.random() * 200,
             useNativeDriver: false,
           }),
           Animated.timing(height, {
-            toValue: 0.3,
-            duration: 200 + Math.random() * 300,
+            toValue: 0.2,
+            duration: 150 + Math.random() * 200,
             useNativeDriver: false,
           }),
         ])
       ).start();
     });
 
-    // Expanding rings
+    // Soft expanding rings
     [pulseRing1, pulseRing2, pulseRing3].forEach((ring, index) => {
       Animated.loop(
         Animated.sequence([
-          Animated.delay(index * 400),
+          Animated.delay(index * 600),
           Animated.timing(ring, {
-            toValue: 1.8,
-            duration: 1200,
+            toValue: 1.6,
+            duration: 1800,
             useNativeDriver: true,
           }),
           Animated.timing(ring, {
             toValue: 1,
-            duration: 1200,
+            duration: 1800,
             useNativeDriver: true,
           }),
         ])
@@ -514,8 +502,8 @@ export default function VoiceChatOverlay({
   const startProcessingAnimations = () => {
     Animated.loop(
       Animated.timing(orbScale, {
-        toValue: 1.15,
-        duration: 1000,
+        toValue: 1.1,
+        duration: 1200,
         useNativeDriver: true,
       })
     ).start();
@@ -525,13 +513,13 @@ export default function VoiceChatOverlay({
     Animated.loop(
       Animated.sequence([
         Animated.timing(orbScale, {
-          toValue: 1.3,
-          duration: 300,
+          toValue: 1.25,
+          duration: 400,
           useNativeDriver: true,
         }),
         Animated.timing(orbScale, {
           toValue: 1.1,
-          duration: 300,
+          duration: 400,
           useNativeDriver: true,
         }),
       ])
@@ -549,8 +537,8 @@ export default function VoiceChatOverlay({
       style={{
         flexDirection: "row",
         alignItems: "center",
-        height: 80,
-        marginBottom: 30,
+        height: 60,
+        marginBottom: 20,
         justifyContent: "center",
       }}
     >
@@ -558,15 +546,15 @@ export default function VoiceChatOverlay({
         <Animated.View
           key={index}
           style={{
-            width: 4,
+            width: 3,
             height: height.interpolate({
               inputRange: [0, 1],
-              outputRange: [15, 60],
+              outputRange: [8, 45],
             }),
             backgroundColor: "#3b82f6",
-            marginHorizontal: 2,
-            borderRadius: 2,
-            opacity: 0.8,
+            marginHorizontal: 1.5,
+            borderRadius: 1.5,
+            opacity: 0.9,
           }}
         />
       ))}
@@ -581,37 +569,37 @@ export default function VoiceChatOverlay({
         transform: [{ scale: breatheScale }],
       }}
     >
-      {/* Outer pulse rings */}
+      {/* Soft pulse rings */}
       <Animated.View
         style={{
           position: "absolute",
-          width: 220,
-          height: 220,
-          borderRadius: 110,
-          borderWidth: 2,
-          borderColor: "rgba(59, 130, 246, 0.2)",
+          width: 200,
+          height: 200,
+          borderRadius: 100,
+          borderWidth: 1.5,
+          borderColor: "rgba(59, 130, 246, 0.15)",
           transform: [{ scale: pulseRing1 }],
         }}
       />
       <Animated.View
         style={{
           position: "absolute",
-          width: 180,
-          height: 180,
-          borderRadius: 90,
-          borderWidth: 2,
-          borderColor: "rgba(139, 92, 246, 0.3)",
+          width: 160,
+          height: 160,
+          borderRadius: 80,
+          borderWidth: 1.5,
+          borderColor: "rgba(139, 92, 246, 0.2)",
           transform: [{ scale: pulseRing2 }],
         }}
       />
       <Animated.View
         style={{
           position: "absolute",
-          width: 260,
-          height: 260,
-          borderRadius: 130,
+          width: 240,
+          height: 240,
+          borderRadius: 120,
           borderWidth: 1,
-          borderColor: "rgba(236, 72, 153, 0.2)",
+          borderColor: "rgba(236, 72, 153, 0.1)",
           transform: [{ scale: pulseRing3 }],
         }}
       />
@@ -619,9 +607,9 @@ export default function VoiceChatOverlay({
       {/* Central orb */}
       <Animated.View
         style={{
-          width: 140,
-          height: 140,
-          borderRadius: 70,
+          width: 120,
+          height: 120,
+          borderRadius: 60,
           transform: [{ scale: orbScale }],
           opacity: orbOpacity,
         }}
@@ -639,7 +627,7 @@ export default function VoiceChatOverlay({
           style={{
             width: "100%",
             height: "100%",
-            borderRadius: 70,
+            borderRadius: 60,
             justifyContent: "center",
             alignItems: "center",
             shadowColor: isListening
@@ -648,9 +636,9 @@ export default function VoiceChatOverlay({
                 ? "#ec4899"
                 : "#000",
             shadowOffset: { width: 0, height: 0 },
-            shadowOpacity: 0.5,
-            shadowRadius: 20,
-            elevation: 10,
+            shadowOpacity: 0.4,
+            shadowRadius: 15,
+            elevation: 8,
           }}
         >
           <Ionicons
@@ -661,9 +649,9 @@ export default function VoiceChatOverlay({
                   ? "hourglass"
                   : isPlaying
                     ? "volume-high"
-                    : "heart"
+                    : "chatbubble-ellipses"
             }
-            size={56}
+            size={48}
             color="#fff"
           />
         </LinearGradient>
@@ -690,11 +678,11 @@ export default function VoiceChatOverlay({
             }}
           >
             <View>
-              <Text style={{ color: "#fff", fontSize: 24, fontWeight: "bold" }}>
-                Voice Chat with Nomi
+              <Text style={{ color: "#fff", fontSize: 22, fontWeight: "600" }}>
+                Chatting with Nomi
               </Text>
-              <Text style={{ color: "#9ca3af", fontSize: 14, marginTop: 4 }}>
-                Session: {formatDuration(sessionDuration)}
+              <Text style={{ color: "#9ca3af", fontSize: 14, marginTop: 2 }}>
+                {formatDuration(sessionDuration)}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose}>
@@ -711,23 +699,24 @@ export default function VoiceChatOverlay({
               paddingHorizontal: 20,
             }}
           >
-            {/* Status Text */}
+            {/* Natural status text */}
             <Text
               style={{
                 color: "#e5e7eb",
-                fontSize: 20,
+                fontSize: 18,
                 textAlign: "center",
-                marginBottom: 50,
-                fontWeight: "500",
+                marginBottom: 40,
+                fontWeight: "400",
+                lineHeight: 24,
               }}
             >
               {isListening
                 ? "I'm listening... 👂"
                 : isProcessing
-                  ? "Understanding your words... 🤔"
+                  ? "Thinking of the perfect response... 🤔"
                   : isPlaying
-                    ? "Speaking with you... 💬"
-                    : "Ready to listen and support you 💙"}
+                    ? "💬"
+                    : "Ready to chat! 😊"}
             </Text>
 
             {/* Waveform during listening */}
@@ -736,9 +725,9 @@ export default function VoiceChatOverlay({
             {/* Central Orb */}
             <CentralOrb />
 
-            {/* Current Transcript */}
+            {/* Live transcript */}
             {currentTranscript && (
-              <View style={{ marginTop: 50, paddingHorizontal: 20 }}>
+              <View style={{ marginTop: 40, paddingHorizontal: 20 }}>
                 <Text
                   style={{
                     color: "#3b82f6",
@@ -770,29 +759,27 @@ export default function VoiceChatOverlay({
               </View>
             )}
 
-            {/* Instructions */}
+            {/* Natural instructions */}
             <Text
               style={{
                 color: "#6b7280",
                 fontSize: 14,
                 textAlign: "center",
-                marginTop: 60,
+                marginTop: 50,
                 lineHeight: 20,
               }}
             >
-              Speak naturally about anything on your mind.{"\n"}
-              I'm here to listen without judgment.
+              Just talk naturally - I'm here to listen and chat with you.
             </Text>
           </View>
 
-          {/* Footer with conversation stats */}
+          {/* Footer */}
           <View style={{ padding: 20, alignItems: "center" }}>
             {conversationHistory.length > 0 && (
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <MaterialIcons name="chat" size={16} color="#9ca3af" />
                 <Text style={{ color: "#9ca3af", fontSize: 12, marginLeft: 8 }}>
-                  {Math.floor(conversationHistory.length / 2)} exchanges in this
-                  conversation
+                  {Math.floor(conversationHistory.length / 2)} back and forth
                 </Text>
               </View>
             )}

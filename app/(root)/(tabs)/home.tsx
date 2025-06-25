@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-
 import { useState, useEffect, useRef } from "react";
 import {
   View,
@@ -54,7 +53,7 @@ const quickActions: QuickAction[] = [
   {
     id: "chat",
     title: "Chat with Nomi",
-    subtitle: "Start a conversation",
+    subtitle: "Your emotional co-pilot",
     icon: "chatbubble-ellipses",
     color: "#3b82f6",
     route: "/chat",
@@ -69,8 +68,8 @@ const quickActions: QuickAction[] = [
   },
   {
     id: "mood",
-    title: "Track Mood",
-    subtitle: "How are you feeling?",
+    title: "Check In",
+    subtitle: "Track your emotional patterns",
     icon: "heart",
     color: "#ec4899",
     route: "/mood",
@@ -78,7 +77,7 @@ const quickActions: QuickAction[] = [
   {
     id: "insights",
     title: "View Insights",
-    subtitle: "Your progress",
+    subtitle: "Your cognitive wellness",
     icon: "analytics",
     color: "#10b981",
     route: "/mood",
@@ -115,6 +114,7 @@ export default function HomeScreen() {
   const [todaysMood, setTodaysMood] = useState<MoodEntry | null>(null);
   const [recentMoods, setRecentMoods] = useState<MoodEntry[]>([]);
   const [weeklyStats, setWeeklyStats] = useState<any>(null);
+  const [weeklyInsights, setWeeklyInsights] = useState<string[]>([]);
   const [sections, setSections] = useState<HomeSection[]>([]);
   const [loading, setLoading] = useState(true);
   const [promptModalVisible, setPromptModalVisible] = useState(false);
@@ -150,7 +150,11 @@ export default function HomeScreen() {
     const interval = setInterval(() => {
       console.log("🔄 Auto-refreshing home data...");
       loadData();
-      checkForMoodPrompt();
+      // Only check for prompts occasionally, not every refresh
+      if (Math.random() < 0.1) {
+        // 10% chance
+        checkForMoodPrompt();
+      }
     }, 30000);
 
     return () => clearInterval(interval);
@@ -173,6 +177,13 @@ export default function HomeScreen() {
     if (!user) return;
 
     try {
+      // Only check for prompts occasionally, not on every refresh
+      const shouldCheck = Math.random() < 0.3; // 30% chance to check
+      if (!shouldCheck) {
+        console.log("💭 Skipping prompt check this time");
+        return;
+      }
+
       const prompt = await MoodPromptManager.shouldShowInAppPrompt(user.id);
       if (prompt) {
         setCurrentPrompt(prompt);
@@ -243,20 +254,12 @@ export default function HomeScreen() {
       console.log("🏠 Weekly stats:", stats);
       setWeeklyStats(stats);
 
-      // Build sections
-      const newSections: HomeSection[] = [
-        { id: "welcome", type: "welcome" },
-        { id: "mood-check", type: "mood-check", data: mood },
-        { id: "quick-actions", type: "quick-actions" },
-        { id: "quick-stats", type: "quick-stats", data: stats },
-        { id: "recent-moods", type: "recent-moods", data: recent.slice(0, 3) },
-        { id: "insights", type: "insights", data: { mood, stats } },
-      ];
-      setSections(newSections);
-
-      console.log("🏠 Home data loaded successfully from database");
+      // Get weekly insights with cognitive wellness language
+      const insights = await MoodAnalytics.getWeeklyInsights(user.id);
+      console.log("🏠 Weekly insights:", insights);
+      setWeeklyInsights(insights);
     } catch (error) {
-      console.error("❌ Error loading home data:", error);
+      console.error("❌ Error loading home screen data:", error);
     }
   };
 
@@ -296,7 +299,8 @@ export default function HomeScreen() {
           lineHeight: 22,
         }}
       >
-        Welcome back to your wellness journey.{"\n"}How can I support you today?
+        Welcome back to your cognitive wellness journey.{"\n"}How can I support
+        you today?
       </Text>
     </Animated.View>
   );
@@ -332,7 +336,7 @@ export default function HomeScreen() {
                 <Text
                   style={{ color: "#fff", fontSize: 18, fontWeight: "bold" }}
                 >
-                  Today's Mood
+                  Today's Check-in
                 </Text>
                 <Text style={{ color: todaysMood.mood.color, fontSize: 14 }}>
                   {todaysMood.mood.name} • {todaysMood.intensity}/5
@@ -378,7 +382,7 @@ export default function HomeScreen() {
               How are you feeling today?
             </Text>
             <Text style={{ color: "#9ca3af", fontSize: 14 }}>
-              Tap to track your mood
+              Tap to check in with yourself
             </Text>
           </TouchableOpacity>
         )}
@@ -551,7 +555,7 @@ export default function HomeScreen() {
           }}
         >
           <Text style={{ color: "#fff", fontSize: 18, fontWeight: "bold" }}>
-            Recent Moods
+            Recent Check-ins
           </Text>
           <TouchableOpacity onPress={() => router.push("/mood")}>
             <Text style={{ color: "#3b82f6", fontSize: 14 }}>View All</Text>
@@ -614,22 +618,7 @@ export default function HomeScreen() {
   };
 
   const renderInsights = () => {
-    if (!weeklyStats || weeklyStats.totalEntries === 0) return null;
-
-    const insights = [];
-    if (weeklyStats.averageMood >= 4) {
-      insights.push("🌟 You've been feeling great this week!");
-    } else if (weeklyStats.averageMood <= 2) {
-      insights.push(
-        "💙 Remember, it's okay to have tough days. I'm here for you."
-      );
-    }
-
-    if (weeklyStats.streak >= 7) {
-      insights.push("🔥 Amazing! You've been consistent with mood tracking.");
-    }
-
-    if (insights.length === 0) return null;
+    if (weeklyInsights.length === 0) return null;
 
     return (
       <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
@@ -641,9 +630,9 @@ export default function HomeScreen() {
             marginBottom: 15,
           }}
         >
-          Insights
+          Weekly Insights
         </Text>
-        {insights.map((insight, index) => (
+        {weeklyInsights.map((insight, index) => (
           <View
             key={index}
             style={{
@@ -683,6 +672,19 @@ export default function HomeScreen() {
     }
   };
 
+  // Build sections after loading data
+  useEffect(() => {
+    const newSections: HomeSection[] = [
+      { id: "welcome", type: "welcome" },
+      { id: "mood-check", type: "mood-check", data: todaysMood },
+      { id: "quick-actions", type: "quick-actions" },
+      { id: "quick-stats", type: "quick-stats", data: weeklyStats },
+      { id: "recent-moods", type: "recent-moods", data: recentMoods },
+      { id: "insights", type: "insights", data: weeklyInsights },
+    ];
+    setSections(newSections);
+  }, [todaysMood, weeklyStats, recentMoods, weeklyInsights]);
+
   if (loading) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: "#0f0f0f" }}>
@@ -721,7 +723,7 @@ export default function HomeScreen() {
               Nomi
             </Text>
             <Text style={{ color: "#9ca3af", fontSize: 12 }}>
-              Your wellness companion
+              Your cognitive wellness companion
             </Text>
           </View>
 
@@ -758,7 +760,7 @@ export default function HomeScreen() {
         </View>
 
         {/* Debug Button (Dev Only) */}
-        {__DEV__ && (
+        {/* {__DEV__ && (
           <TouchableOpacity
             onPress={async () => {
               if (user) {
@@ -779,7 +781,7 @@ export default function HomeScreen() {
               🔍 Debug Database (Dev Only)
             </Text>
           </TouchableOpacity>
-        )}
+        )} */}
 
         {/* Content - Using FlatList to avoid nesting issues */}
         <FlatList

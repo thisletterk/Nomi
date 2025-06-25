@@ -86,7 +86,7 @@ export default function ProfileScreen() {
 
     try {
       // Load mood statistics
-      const allMoods = await MoodStorage.getAllMoodEntries(user.id);
+      const allMoods = await MoodStorage.getAllMoodEntries();
 
       if (allMoods.length > 0) {
         const totalMoodValue = allMoods.reduce(
@@ -291,7 +291,10 @@ export default function ProfileScreen() {
         {user?.emailAddresses[0]?.emailAddress}
       </Text>
       <Text style={{ color: "#6b7280", fontSize: 14 }}>
-        Member since {stats?.joinDate}
+        Member since{" "}
+        {user?.createdAt
+          ? new Date(user.createdAt).toLocaleDateString()
+          : "Recently"}
       </Text>
     </Animated.View>
   );
