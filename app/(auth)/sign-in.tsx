@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { useSignIn } from "@clerk/clerk-expo";
+import { useSignIn, useOAuth } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
 import CustomButton from "@/components/CustomButton";
 import MaskedView from "@react-native-masked-view/masked-view";
@@ -43,11 +43,37 @@ const GradientText = ({ text, style }: { text: string; style?: any }) => (
 
 export default function SignInScreen() {
   const { signIn, setActive, isLoaded } = useSignIn();
+  const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const handleGoogleSignIn = async () => {
+    if (!isLoaded) return;
+
+    setGoogleLoading(true);
+    try {
+      const { createdSessionId, setActive: oauthSetActive } =
+        await startOAuthFlow();
+
+      if (createdSessionId && oauthSetActive) {
+        await oauthSetActive({ session: createdSessionId });
+        // Navigate to your actual home screen - update this path!
+        router.replace("/home"); // Change this to your actual home screen path
+      }
+    } catch (error: any) {
+      console.error("Google sign in error:", error);
+      Alert.alert(
+        "Google Sign In Failed",
+        error?.message || "Please try again."
+      );
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   const handleSignIn = async () => {
     if (!isLoaded) return;
@@ -74,7 +100,7 @@ export default function SignInScreen() {
       console.error("Sign in error:", error);
       Alert.alert(
         "Sign In Failed",
-        error.errors?.[0]?.message ||
+        error?.errors?.[0]?.message ||
           "Please check your credentials and try again."
       );
     } finally {
@@ -96,7 +122,6 @@ export default function SignInScreen() {
           <View
             style={{ flex: 1, justifyContent: "center", paddingHorizontal: 20 }}
           >
-            {/* Header */}
             <View style={{ alignItems: "center", marginBottom: 40 }}>
               <View
                 style={{
@@ -122,9 +147,60 @@ export default function SignInScreen() {
               </Text>
             </View>
 
-            {/* Form */}
+            <TouchableOpacity
+              onPress={handleGoogleSignIn}
+              disabled={googleLoading}
+              style={{
+                backgroundColor: "#fff",
+                borderRadius: 12,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: 16,
+                marginBottom: 30,
+                opacity: googleLoading ? 0.7 : 1,
+              }}
+            >
+              <Ionicons
+                name="logo-google"
+                size={20}
+                color="#4285f4"
+                style={{ marginRight: 12 }}
+              />
+              <Text
+                style={{ color: "#374151", fontSize: 16, fontWeight: "600" }}
+              >
+                {googleLoading
+                  ? "Signing in with Google..."
+                  : "Continue with Google"}
+              </Text>
+            </TouchableOpacity>
+
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 30,
+              }}
+            >
+              <View
+                style={{ flex: 1, height: 1, backgroundColor: "#4b5563" }}
+              />
+              <Text
+                style={{
+                  color: "#9ca3af",
+                  paddingHorizontal: 16,
+                  fontSize: 14,
+                }}
+              >
+                or
+              </Text>
+              <View
+                style={{ flex: 1, height: 1, backgroundColor: "#4b5563" }}
+              />
+            </View>
+
             <View style={{ marginBottom: 30 }}>
-              {/* Email Input */}
               <View style={{ marginBottom: 20 }}>
                 <Text
                   style={{
@@ -167,7 +243,6 @@ export default function SignInScreen() {
                 </View>
               </View>
 
-              {/* Password Input */}
               <View style={{ marginBottom: 20 }}>
                 <Text
                   style={{
@@ -219,7 +294,6 @@ export default function SignInScreen() {
                 </View>
               </View>
 
-              {/* Forgot Password */}
               <TouchableOpacity
                 style={{ alignSelf: "flex-end", marginBottom: 30 }}
               >
@@ -229,7 +303,6 @@ export default function SignInScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Sign In Button */}
             <CustomButton
               title="Sign In"
               onPress={handleSignIn}
@@ -238,7 +311,6 @@ export default function SignInScreen() {
               size="large"
             />
 
-            {/* Sign Up Link */}
             <View
               style={{
                 flexDirection: "row",

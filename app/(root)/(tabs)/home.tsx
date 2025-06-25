@@ -1,5 +1,7 @@
 "use client";
 
+import React from "react";
+
 import { useState, useEffect, useRef } from "react";
 import {
   View,
@@ -16,12 +18,14 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useUser } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import MaskedView from "@react-native-masked-view/masked-view";
 import type { MoodEntry } from "@/types/mood";
-import { MoodStorage } from "@/lib/mood-storage";
+import { MoodDatabase } from "@/lib/mood-database";
 import { MoodAnalytics } from "@/lib/mood-analytics";
-import DatabaseStatus from "@/components/database-status";
-import DatabaseInitializer from "@/components/database-initializer";
+import { MoodPromptManager, type MoodPrompt } from "@/lib/mood-prompts";
+import MoodPromptModal from "@/components/MoodPromptModal";
+// import { __DEV__ } from "react-native"
 
 const { width, height } = Dimensions.get("window");
 
@@ -112,17 +116,72 @@ export default function HomeScreen() {
   const [recentMoods, setRecentMoods] = useState<MoodEntry[]>([]);
   const [weeklyStats, setWeeklyStats] = useState<any>(null);
   const [sections, setSections] = useState<HomeSection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [promptModalVisible, setPromptModalVisible] = useState(false);
+  const [currentPrompt, setCurrentPrompt] = useState<MoodPrompt | null>(null);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
 
+  // Load data when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user) {
+        console.log("🏠 Home screen focused - loading data...");
+        loadData();
+        checkForMoodPrompt();
+      }
+    }, [user])
+  );
+
   useEffect(() => {
     if (user) {
-      loadData();
+      initializeAndLoadData();
+      initializeNotifications();
     }
     startAnimations();
   }, [user]);
+
+  // Auto-refresh data every 30 seconds when screen is active
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = setInterval(() => {
+      console.log("🔄 Auto-refreshing home data...");
+      loadData();
+      checkForMoodPrompt();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [user]);
+
+  const initializeNotifications = async () => {
+    try {
+      const hasPermission = await MoodPromptManager.initializeNotifications();
+      if (hasPermission) {
+        const prompts = await MoodPromptManager.getPromptSettings();
+        await MoodPromptManager.scheduleNotifications(prompts);
+        console.log("✅ Mood prompts initialized");
+      }
+    } catch (error) {
+      console.error("❌ Error initializing mood prompts:", error);
+    }
+  };
+
+  const checkForMoodPrompt = async () => {
+    if (!user) return;
+
+    try {
+      const prompt = await MoodPromptManager.shouldShowInAppPrompt(user.id);
+      if (prompt) {
+        setCurrentPrompt(prompt);
+        setPromptModalVisible(true);
+      }
+    } catch (error) {
+      console.error("❌ Error checking for mood prompt:", error);
+    }
+  };
 
   const startAnimations = () => {
     Animated.parallel([
@@ -139,27 +198,49 @@ export default function HomeScreen() {
     ]).start();
   };
 
+  const initializeAndLoadData = async () => {
+    try {
+      console.log("🏠 Initializing database and loading home data...");
+      await MoodDatabase.initializeDatabase();
+      await loadData();
+    } catch (error) {
+      console.error("❌ Error initializing home screen:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadData = async () => {
     if (!user) return;
 
+    console.log("🏠 Loading home screen data from database...");
+
     try {
       const today = new Date().toISOString().split("T")[0];
-      const mood = await MoodStorage.getMoodEntryForDate(user.id, today);
+
+      // Get today's mood from database
+      const mood = await MoodDatabase.getMoodEntryForDate(user.id, today);
+      console.log(
+        "🏠 Today's mood:",
+        mood ? `${mood.mood.name} (${mood.intensity}/5)` : "Not found"
+      );
       setTodaysMood(mood);
 
-      // Get recent moods (last 7 days)
+      // Get recent moods (last 7 days) from database
       const weekStart = new Date();
       weekStart.setDate(weekStart.getDate() - 7);
       const weekStartStr = weekStart.toISOString().split("T")[0];
-      const recent = await MoodStorage.getMoodEntriesForDateRange(
+      const recent = await MoodDatabase.getMoodEntriesForDateRange(
         user.id,
         weekStartStr,
         today
       );
+      console.log("🏠 Recent moods found:", recent.length);
       setRecentMoods(recent.slice(0, 5));
 
       // Get weekly stats
       const stats = await MoodAnalytics.getWeeklyStats(user.id, weekStartStr);
+      console.log("🏠 Weekly stats:", stats);
       setWeeklyStats(stats);
 
       // Build sections
@@ -172,12 +253,15 @@ export default function HomeScreen() {
         { id: "insights", type: "insights", data: { mood, stats } },
       ];
       setSections(newSections);
+
+      console.log("🏠 Home data loaded successfully from database");
     } catch (error) {
-      console.error("Error loading home data:", error);
+      console.error("❌ Error loading home data:", error);
     }
   };
 
   const handleRefresh = async () => {
+    console.log("🔄 Refreshing home screen...");
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
@@ -501,10 +585,26 @@ export default function HomeScreen() {
                 {mood.mood.name}
               </Text>
               <Text style={{ color: "#9ca3af", fontSize: 10, marginTop: 2 }}>
-                {new Date(mood.timestamp).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                })}
+                {(() => {
+                  try {
+                    const date = new Date(mood.timestamp);
+                    if (isNaN(date.getTime())) {
+                      const fallbackDate = new Date(mood.date);
+                      return isNaN(fallbackDate.getTime())
+                        ? "Recent"
+                        : fallbackDate.toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                          });
+                    }
+                    return date.toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    });
+                  } catch (error) {
+                    return "Recent";
+                  }
+                })()}
               </Text>
             </View>
           ))}
@@ -583,6 +683,21 @@ export default function HomeScreen() {
     }
   };
 
+  if (loading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#0f0f0f" }}>
+        <View
+          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+        >
+          <Ionicons name="hourglass" size={32} color="#3b82f6" />
+          <Text style={{ color: "#9ca3af", marginTop: 10 }}>
+            Loading your wellness dashboard...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#0f0f0f" }}>
       <LinearGradient
@@ -642,9 +757,29 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Database Status and Initializer here */}
-        {/* <DatabaseStatus /> */}
-        {/* <DatabaseInitializer /> */}
+        {/* Debug Button (Dev Only) */}
+        {__DEV__ && (
+          <TouchableOpacity
+            onPress={async () => {
+              if (user) {
+                console.log("🔍 === HOME SCREEN DEBUG ===");
+                await MoodDatabase.debugDatabase(user.id);
+                await MoodAnalytics.debugAnalytics(user.id);
+                console.log("🔍 === END DEBUG ===");
+              }
+            }}
+            style={{
+              backgroundColor: "#374151",
+              margin: 20,
+              padding: 10,
+              borderRadius: 8,
+            }}
+          >
+            <Text style={{ color: "#fff", textAlign: "center", fontSize: 12 }}>
+              🔍 Debug Database (Dev Only)
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* Content - Using FlatList to avoid nesting issues */}
         <FlatList
@@ -656,6 +791,20 @@ export default function HomeScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
           contentContainerStyle={{ paddingBottom: 100 }}
+        />
+
+        {/* Mood Prompt Modal */}
+        <MoodPromptModal
+          visible={promptModalVisible}
+          prompt={currentPrompt}
+          onClose={() => {
+            setPromptModalVisible(false);
+            setCurrentPrompt(null);
+          }}
+          onTrackMood={() => {
+            setPromptModalVisible(false);
+            setCurrentPrompt(null);
+          }}
         />
       </LinearGradient>
     </SafeAreaView>

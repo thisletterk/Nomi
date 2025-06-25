@@ -14,9 +14,10 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { type MoodEntry, type MoodType, MOOD_TYPES } from "../types/mood";
-import { MoodStorage } from "../lib/mood-storage";
 import { MoodDatabase } from "../lib/mood-database";
+import { MoodAnalytics } from "../lib/mood-analytics";
 import { useUser } from "@clerk/clerk-expo";
+// import { __DEV__ } from "react-native"
 
 const { width } = Dimensions.get("window");
 
@@ -30,12 +31,9 @@ export default function MoodSelector({
   existingEntry,
 }: MoodSelectorProps) {
   const { user } = useUser();
-  const [selectedMood, setSelectedMood] = useState<MoodType | null>(
-    // Don't pre-fill from existing entry - start fresh each time
-    null
-  );
-  const [intensity, setIntensity] = useState<number>(3); // Always start at 3
-  const [note, setNote] = useState<string>(""); // Always start empty
+  const [selectedMood, setSelectedMood] = useState<MoodType | null>(null);
+  const [intensity, setIntensity] = useState<number>(3);
+  const [note, setNote] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [moodTypes, setMoodTypes] = useState<MoodType[]>(MOOD_TYPES);
   const [scaleAnim] = useState(new Animated.Value(1));
@@ -43,20 +41,43 @@ export default function MoodSelector({
 
   useEffect(() => {
     loadMoodTypes();
-  }, []);
+    initializeDatabase();
+    // Debug database on component mount
+    if (user) {
+      debugCurrentState();
+    }
+  }, [user]);
+
+  const initializeDatabase = async () => {
+    try {
+      await MoodDatabase.initializeDatabase();
+      console.log("✅ Database initialized in mood selector");
+    } catch (error) {
+      console.error("❌ Failed to initialize database:", error);
+    }
+  };
+
+  const debugCurrentState = async () => {
+    if (!user) return;
+    console.log("🔍 === MOOD SELECTOR DEBUG ===");
+    await MoodDatabase.debugDatabase(user.id);
+    await MoodAnalytics.debugAnalytics(user.id);
+    console.log("🔍 === END DEBUG ===");
+  };
 
   const loadMoodTypes = async () => {
     try {
       const types = await MoodDatabase.getMoodTypes();
       setMoodTypes(types);
+      console.log("📝 Loaded mood types:", types.length);
     } catch (error) {
       console.error("Error loading mood types:", error);
-      // Fallback to static types
       setMoodTypes(MOOD_TYPES);
     }
   };
 
   const handleMoodSelect = (mood: MoodType) => {
+    console.log("🎯 Mood selected:", mood.name);
     setSelectedMood(mood);
     setIntensity(mood.value);
 
@@ -76,10 +97,10 @@ export default function MoodSelector({
   };
 
   const resetForm = () => {
+    console.log("🔄 Resetting form");
     setSelectedMood(null);
     setIntensity(3);
     setNote("");
-    // Clear the TextInput explicitly
     if (textInputRef.current) {
       textInputRef.current.clear();
     }
@@ -91,26 +112,38 @@ export default function MoodSelector({
       return;
     }
 
+    console.log("💾 Starting mood save process...");
     setSaving(true);
+
     try {
       const today = new Date().toISOString().split("T")[0];
+      const timestamp = Date.now();
 
       const moodEntry: MoodEntry = {
-        // Always generate a new ID - never reuse existing entry ID
-        id: `mood_${Date.now()}_${user.id}_${Math.random().toString(36).substring(2, 15)}`,
+        id: `mood_${timestamp}_${user.id}_${Math.random().toString(36).substring(2, 15)}`,
         userId: user.id,
         mood: selectedMood,
         intensity,
         note: note.trim(),
-        timestamp: Date.now(),
+        timestamp,
         date: today,
       };
 
-      console.log("🚀 ALWAYS saving as NEW entry:", moodEntry);
+      console.log("💾 Saving mood entry to database:", moodEntry);
 
-      // ALWAYS save as new entry - never update existing ones
-      await MoodStorage.saveMoodEntry(moodEntry);
+      // Save to database
+      await MoodDatabase.saveMoodEntry(moodEntry);
 
+      // Verify it was saved
+      const verification = await MoodDatabase.getAllMoodEntries(user.id);
+      console.log(
+        "✅ Verification: User now has",
+        verification.length,
+        "mood entries in database"
+      );
+
+      // Call the callback to refresh parent components
+      console.log("📢 Calling onMoodSaved callback...");
       onMoodSaved?.(moodEntry);
 
       // Dismiss keyboard first
@@ -118,23 +151,54 @@ export default function MoodSelector({
 
       Alert.alert(
         "Mood Saved! 🎉",
-        `Your ${selectedMood.name.toLowerCase()} mood has been recorded for today.`
+        `Your ${selectedMood.name.toLowerCase()} mood has been recorded for today.`,
+        [
+          {
+            text: "OK",
+            onPress: () => {
+              // Debug after save
+              setTimeout(() => {
+                debugCurrentState();
+              }, 1000);
+            },
+          },
+        ]
       );
 
       // Reset form after successful save
       setTimeout(() => {
         resetForm();
-      }, 100); // Small delay to ensure alert is shown first
+      }, 100);
     } catch (error) {
-      console.error("Error saving mood:", error);
-      Alert.alert("Error", "Failed to save your mood. Please try again.");
+      console.error("❌ Error saving mood:", error);
+      Alert.alert(
+        "Error",
+        `Failed to save your mood: ${error.message || "Please try again."}`
+      );
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <View style={{ padding: 20, paddingBottom: 40 }}>
+    <View style={{ flex: 1, padding: 20 }}>
+      {/* Debug Info */}
+      {__DEV__ && (
+        <TouchableOpacity
+          onPress={debugCurrentState}
+          style={{
+            backgroundColor: "#374151",
+            padding: 10,
+            borderRadius: 8,
+            marginBottom: 20,
+          }}
+        >
+          <Text style={{ color: "#fff", textAlign: "center", fontSize: 12 }}>
+            🔍 Debug Database (Dev Only)
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {/* Header */}
       <View style={{ alignItems: "center", marginBottom: 30 }}>
         <Text
@@ -265,7 +329,6 @@ export default function MoodSelector({
       )}
 
       {/* Note Input */}
-
       <View style={{ marginBottom: 30 }}>
         <Text
           style={{
@@ -354,7 +417,7 @@ export default function MoodSelector({
               fontWeight: "bold",
             }}
           >
-            {saving ? "Saving..." : "Add New Mood Entry"}
+            {saving ? "Saving..." : "Save Mood Entry"}
           </Text>
         </LinearGradient>
       </TouchableOpacity>
@@ -369,7 +432,7 @@ export default function MoodSelector({
           fontStyle: "italic",
         }}
       >
-        Each mood entry will be saved as a separate record
+        Each mood entry will be saved to your database
       </Text>
     </View>
   );

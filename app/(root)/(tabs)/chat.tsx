@@ -1,6 +1,6 @@
 "use client";
 
-import type React from "react";
+import React from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   View,
@@ -15,12 +15,15 @@ import {
   type ListRenderItem,
 } from "react-native";
 import { useUser } from "@clerk/clerk-expo";
+import { useFocusEffect } from "@react-navigation/native";
 import axios from "axios";
 import { Ionicons, FontAwesome, MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaskedView from "@react-native-masked-view/masked-view";
 import VoiceChatOverlay from "@/components/VoiceChatOverlay";
+import { MoodAnalytics } from "@/lib/mood-analytics";
+import { MoodPromptManager } from "@/lib/mood-prompts";
 
 // Enhanced type definitions
 interface Message {
@@ -42,45 +45,6 @@ interface ConversationStarter {
   category: "mood" | "stress" | "general" | "goals";
   icon: string;
 }
-
-const conversationStarters: ConversationStarter[] = [
-  {
-    id: "1",
-    text: "How are you feeling today?",
-    category: "mood",
-    icon: "heart",
-  },
-  {
-    id: "2",
-    text: "What's on your mind?",
-    category: "general",
-    icon: "chatbubble",
-  },
-  {
-    id: "3",
-    text: "Tell me about your day",
-    category: "general",
-    icon: "sunny",
-  },
-  {
-    id: "4",
-    text: "I'm feeling stressed",
-    category: "stress",
-    icon: "alert-circle",
-  },
-  {
-    id: "5",
-    text: "I want to talk about my goals",
-    category: "goals",
-    icon: "flag",
-  },
-  {
-    id: "6",
-    text: "I need someone to listen",
-    category: "general",
-    icon: "ear",
-  },
-];
 
 const GradientText: React.FC<GradientTextProps> = ({ text }) => (
   <MaskedView
@@ -140,12 +104,133 @@ export default function NomiChatScreen() {
   const [error, setError] = useState<string | null>(null);
   const [voiceChatVisible, setVoiceChatVisible] = useState<boolean>(false);
   const [showStarters, setShowStarters] = useState<boolean>(true);
+  const [moodContext, setMoodContext] = useState<string>("");
+  const [contextLoaded, setContextLoaded] = useState<boolean>(false);
+  const [conversationStarters, setConversationStarters] = useState<
+    ConversationStarter[]
+  >([]);
 
   const flatListRef = useRef<FlatList<Message>>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  // Enhanced system prompt for better mental health conversations
-  const systemPrompt = {
+  // Load mood context when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user) {
+        console.log(
+          "🧠 Chat screen focused - loading detailed mood context..."
+        );
+        loadDetailedMoodContext();
+        loadPersonalizedStarters();
+      }
+    }, [user])
+  );
+
+  // Load mood context when component mounts and when user changes
+  useEffect(() => {
+    if (user) {
+      loadDetailedMoodContext();
+      loadPersonalizedStarters();
+    }
+  }, [user]);
+
+  // Reload mood context periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (user) {
+        console.log("🧠 Periodic detailed mood context refresh...");
+        loadDetailedMoodContext();
+      }
+    }, 120000); // Refresh every 2 minutes
+
+    return () => clearInterval(interval);
+  }, [user]);
+
+  const loadDetailedMoodContext = async () => {
+    if (!user) return;
+
+    try {
+      console.log("🧠 Loading detailed mood context for chat...");
+      const context = await MoodAnalytics.getDetailedMoodContext(user.id);
+      setMoodContext(context);
+      setContextLoaded(true);
+      console.log(
+        "🧠 Detailed mood context loaded for chat:",
+        context.substring(0, 200) + "..."
+      );
+    } catch (error) {
+      console.error("❌ Error loading detailed mood context:", error);
+      setMoodContext(
+        "I'm having trouble accessing your mood history right now, but I'm here to listen and support you."
+      );
+      setContextLoaded(true);
+    }
+  };
+
+  const loadPersonalizedStarters = async () => {
+    if (!user) return;
+
+    try {
+      const personalizedPrompts =
+        await MoodPromptManager.getPersonalizedPrompts(user.id);
+      const starters: ConversationStarter[] = personalizedPrompts.map(
+        (prompt, index) => ({
+          id: `personalized-${index}`,
+          text: prompt,
+          category: "mood",
+          icon: "heart",
+        })
+      );
+
+      // Add some general starters
+      starters.push(
+        {
+          id: "general-1",
+          text: "I need someone to listen",
+          category: "general",
+          icon: "ear",
+        },
+        {
+          id: "stress-1",
+          text: "I'm feeling stressed",
+          category: "stress",
+          icon: "alert-circle",
+        }
+      );
+
+      setConversationStarters(starters);
+      console.log(
+        "💭 Loaded personalized conversation starters:",
+        starters.length
+      );
+    } catch (error) {
+      console.error("❌ Error loading personalized starters:", error);
+      // Fallback to default starters
+      setConversationStarters([
+        {
+          id: "1",
+          text: "How are you feeling today?",
+          category: "mood",
+          icon: "heart",
+        },
+        {
+          id: "2",
+          text: "What's on your mind?",
+          category: "general",
+          icon: "chatbubble",
+        },
+        {
+          id: "3",
+          text: "I need someone to listen",
+          category: "general",
+          icon: "ear",
+        },
+      ]);
+    }
+  };
+
+  // Enhanced system prompt with detailed mood context awareness
+  const getSystemPrompt = () => ({
     role: "system" as const,
     content: `You are Nomi, a compassionate AI companion designed to provide emotional support and mental wellness guidance. Your approach is:
 
@@ -164,6 +249,40 @@ CONVERSATION STYLE:
 - Share relatable perspectives without making it about you
 - Keep responses conversational length (2-4 sentences typically)
 
+EMOTIONAL INTELLIGENCE & MOOD AWARENESS:
+${
+  moodContext &&
+  moodContext !== "No recent mood entries available." &&
+  moodContext !== "Unable to retrieve recent mood data." &&
+  !moodContext.includes("trouble accessing")
+    ? `
+${moodContext}
+
+IMPORTANT INSTRUCTIONS FOR USING THIS CONTEXT:
+- Reference specific moods, patterns, and notes naturally in conversation
+- If they mentioned feeling sad yesterday and happy today, acknowledge that improvement
+- If they've been consistently low, offer extra support and validation
+- If they're doing well, celebrate with them and explore what's working
+- Ask about specific things they mentioned in their notes
+- Show continuity by remembering their emotional journey
+- Don't just say "I can see your patterns" - actually reference specific details
+- Use their actual mood names (Very Sad, Sad, Neutral, Happy, Very Happy)
+- Reference their intensity levels and notes when relevant
+- Acknowledge trends like "I noticed you've been feeling happy more often this week"
+
+EXAMPLES OF GOOD RESPONSES:
+- "I see you logged feeling Very Happy yesterday with a note about family time - that sounds wonderful! How are you feeling today?"
+- "I noticed you've been experiencing some Sad moods this week, especially with notes about work stress. How has that been affecting you?"
+- "Your mood improved from Neutral to Happy over the past few days - what do you think contributed to that positive shift?"
+- "You mentioned feeling stressed about deadlines in your recent mood notes. How are you managing that today?"
+`
+    : `The user hasn't been tracking their moods recently, so focus on:
+- Understanding their current emotional state
+- Encouraging them to start tracking their moods
+- Asking open-ended questions about how they're feeling
+- Building rapport and trust for future mood tracking`
+}
+
 MENTAL HEALTH APPROACH:
 - Focus on emotional support, not diagnosis or medical advice
 - Encourage professional help when needed
@@ -177,8 +296,8 @@ BOUNDARIES:
 - Don't provide medical diagnoses or replace therapy
 - Stay supportive but maintain appropriate boundaries
 
-Remember: You're here to listen, support, and help users feel understood and less alone.`,
-  };
+Remember: You're here to listen, support, and help users feel understood and less alone. Use their detailed mood history to provide truly personalized and contextual support that shows you understand their emotional journey.`,
+  });
 
   useEffect(() => {
     if (messages.length > 0 && flatListRef.current) {
@@ -298,19 +417,25 @@ Remember: You're here to listen, support, and help users feel understood and les
     setLoading(true);
 
     try {
+      // Refresh mood context before sending message to get latest data
+      console.log(
+        "🧠 Refreshing detailed mood context before sending message..."
+      );
+      await loadDetailedMoodContext();
+
       const response = await axios.post(
         "https://api.openai.com/v1/chat/completions",
         {
-          model: "gpt-4o-mini", // Using more capable model for better conversations
+          model: "gpt-4o-mini",
           messages: [
-            systemPrompt,
+            getSystemPrompt(),
             ...newMessages.map((m) => ({
               role: m.sender === "user" ? "user" : "assistant",
               content: m.text,
             })),
           ],
-          temperature: 0.8, // Slightly more creative responses
-          max_tokens: 300, // Reasonable response length
+          temperature: 0.8,
+          max_tokens: 400,
         },
         {
           headers: {
@@ -417,7 +542,7 @@ Remember: You're here to listen, support, and help users feel understood and les
           justifyContent: "center",
         }}
       >
-        {conversationStarters.map((starter) => (
+        {conversationStarters.slice(0, 6).map((starter) => (
           <TouchableOpacity
             key={starter.id}
             onPress={() => handleStarterPress(starter)}
@@ -431,10 +556,18 @@ Remember: You're here to listen, support, and help users feel understood and les
               alignItems: "center",
               borderWidth: 1,
               borderColor: "#4b5563",
+              maxWidth: "90%",
             }}
           >
             <Ionicons name={starter.icon as any} size={16} color="#3b82f6" />
-            <Text style={{ color: "#e5e7eb", marginLeft: 8, fontSize: 14 }}>
+            <Text
+              style={{
+                color: "#e5e7eb",
+                marginLeft: 8,
+                fontSize: 14,
+                flexShrink: 1,
+              }}
+            >
               {starter.text}
             </Text>
           </TouchableOpacity>
@@ -468,12 +601,35 @@ Remember: You're here to listen, support, and help users feel understood and les
             I'm Nomi, your personal wellness companion.{"\n"}
             I'm here to listen and support you.
           </Text>
+          {contextLoaded &&
+            moodContext &&
+            moodContext !== "No recent mood entries available." &&
+            moodContext !== "Unable to retrieve recent mood data." &&
+            !moodContext.includes("trouble accessing") && (
+              <Text
+                style={{
+                  color: "#6b7280",
+                  fontSize: 14,
+                  textAlign: "center",
+                  marginTop: 8,
+                  fontStyle: "italic",
+                }}
+              >
+                I can see your recent mood patterns and I'm here to support you.
+              </Text>
+            )}
         </View>
 
         {showStarters && renderConversationStarters()}
       </View>
     ),
-    [user?.firstName, showStarters]
+    [
+      user?.firstName,
+      showStarters,
+      moodContext,
+      contextLoaded,
+      conversationStarters,
+    ]
   );
 
   const renderFooterComponent = useCallback(() => {
@@ -518,12 +674,33 @@ Remember: You're here to listen, support, and help users feel understood and les
               >
                 Nomi is here
               </Text>
+              {contextLoaded &&
+                moodContext &&
+                moodContext !== "No recent mood entries available." &&
+                moodContext !== "Unable to retrieve recent mood data." &&
+                !moodContext.includes("trouble accessing") && (
+                  <View
+                    style={{
+                      marginLeft: 8,
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      backgroundColor: "#3b82f6",
+                      borderRadius: 10,
+                    }}
+                  >
+                    <Text style={{ color: "#fff", fontSize: 10 }}>
+                      Emotionally Aware
+                    </Text>
+                  </View>
+                )}
             </View>
 
             <TouchableOpacity
               onPress={() => {
                 setMessages([]);
                 setShowStarters(true);
+                loadDetailedMoodContext(); // Refresh mood context
+                loadPersonalizedStarters(); // Refresh starters
               }}
               style={{ padding: 8 }}
             >
@@ -641,7 +818,7 @@ Remember: You're here to listen, support, and help users feel understood and les
       <VoiceChatOverlay
         visible={voiceChatVisible}
         onClose={() => setVoiceChatVisible(false)}
-        systemPrompt={systemPrompt}
+        systemPrompt={getSystemPrompt()}
       />
     </SafeAreaView>
   );

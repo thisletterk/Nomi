@@ -27,7 +27,8 @@ export async function POST(request: Request) {
         ${username}, 
         ${email},
         ${clerkId}
-     );`;
+      )
+      ON CONFLICT (clerk_id) DO NOTHING;`;
 
     return new Response(JSON.stringify({ data: response }), {
       status: 201,

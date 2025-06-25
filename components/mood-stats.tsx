@@ -25,6 +25,7 @@ export default function MoodStatsView() {
   const [stats, setStats] = useState<MoodStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -36,6 +37,8 @@ export default function MoodStatsView() {
     if (!user) return;
 
     setLoading(true);
+    setError(null);
+
     try {
       let statsData: MoodStats;
       const today = new Date();
@@ -52,11 +55,23 @@ export default function MoodStatsView() {
           statsData = await MoodAnalytics.getWeeklyStats(user.id, weekStartStr);
           break;
         case "month":
-          statsData = await MoodAnalytics.getMonthlyStats(
-            user.id,
-            today.getFullYear(),
-            today.getMonth() + 1
-          );
+          try {
+            statsData = await MoodAnalytics.getMonthlyStats(
+              user.id,
+              today.getFullYear(),
+              today.getMonth() + 1
+            );
+          } catch (monthError) {
+            console.error("Month stats error:", monthError);
+            setError("Error loading monthly stats. Please try again.");
+            statsData = {
+              totalEntries: 0,
+              averageMood: 0,
+              moodDistribution: {},
+              streak: 0,
+              period: "month",
+            };
+          }
           break;
       }
 
@@ -64,9 +79,14 @@ export default function MoodStatsView() {
       const streak = await MoodAnalytics.calculateStreak(user.id);
       statsData.streak = streak;
 
+      console.log(`${selectedPeriod} stats loaded:`, statsData);
       setStats(statsData);
     } catch (error) {
       console.error("Error loading stats:", error);
+      setError(
+        `Failed to load ${selectedPeriod} statistics. Please try again.`
+      );
+      setStats(null);
     } finally {
       setLoading(false);
     }
@@ -127,6 +147,47 @@ export default function MoodStatsView() {
   );
 
   const renderOverviewCard = () => {
+    if (error) {
+      return (
+        <View
+          style={{
+            backgroundColor: "#dc2626",
+            borderRadius: 20,
+            padding: 20,
+            alignItems: "center",
+            marginBottom: 20,
+            marginHorizontal: 20,
+          }}
+        >
+          <Ionicons name="alert-circle" size={48} color="#fff" />
+          <Text
+            style={{
+              color: "#fff",
+              fontSize: 16,
+              textAlign: "center",
+              marginTop: 10,
+            }}
+          >
+            {error}
+          </Text>
+          <TouchableOpacity
+            onPress={loadStats}
+            style={{
+              backgroundColor: "#fff",
+              borderRadius: 15,
+              paddingHorizontal: 20,
+              paddingVertical: 10,
+              marginTop: 15,
+            }}
+          >
+            <Text style={{ color: "#dc2626", fontWeight: "bold" }}>
+              Try Again
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     if (!stats || stats.totalEntries === 0) {
       return (
         <View
@@ -222,7 +283,77 @@ export default function MoodStatsView() {
   };
 
   const renderMoodDistribution = () => {
-    if (!stats || stats.totalEntries === 0) return null;
+    if (!stats || stats.totalEntries === 0 || error) return null;
+
+    console.log("🎨 Rendering mood distribution:", stats.moodDistribution);
+
+    // Get all mood types that have data OR are in our standard types
+    const allMoodTypes = [...MOOD_TYPES];
+
+    // Add any custom mood types that exist in the data but not in our standard types
+    Object.keys(stats.moodDistribution).forEach((moodId) => {
+      if (!allMoodTypes.find((m) => m.id === moodId)) {
+        // This is a custom mood type, add a placeholder
+        allMoodTypes.push({
+          id: moodId,
+          name: moodId.charAt(0).toUpperCase() + moodId.slice(1),
+          emoji: "😊",
+          color: "#6b7280",
+          value: 3,
+        });
+      }
+    });
+
+    // Filter to only show moods with actual data
+    const moodsWithData = allMoodTypes.filter(
+      (mood) =>
+        stats.moodDistribution[mood.id] && stats.moodDistribution[mood.id] > 0
+    );
+
+    console.log(
+      "🎨 Moods with data:",
+      moodsWithData.map((m) => `${m.name}: ${stats.moodDistribution[m.id]}`)
+    );
+
+    if (moodsWithData.length === 0) {
+      return (
+        <View
+          style={{
+            backgroundColor: "#374151",
+            borderRadius: 20,
+            padding: 20,
+            marginBottom: 20,
+            marginHorizontal: 20,
+          }}
+        >
+          <Text
+            style={{
+              color: "#fff",
+              fontSize: 18,
+              fontWeight: "bold",
+              marginBottom: 15,
+              textAlign: "center",
+            }}
+          >
+            Mood Distribution
+          </Text>
+          <Text style={{ color: "#9ca3af", textAlign: "center" }}>
+            No mood distribution data available for this {selectedPeriod}.
+          </Text>
+          <Text
+            style={{
+              color: "#6b7280",
+              textAlign: "center",
+              fontSize: 12,
+              marginTop: 10,
+            }}
+          >
+            Debug: Total entries = {stats.totalEntries}, Distribution ={" "}
+            {JSON.stringify(stats.moodDistribution)}
+          </Text>
+        </View>
+      );
+    }
 
     return (
       <View
@@ -246,7 +377,7 @@ export default function MoodStatsView() {
           Mood Distribution
         </Text>
 
-        {MOOD_TYPES.map((mood) => {
+        {moodsWithData.map((mood) => {
           const count = stats.moodDistribution[mood.id] || 0;
           const percentage =
             stats.totalEntries > 0 ? (count / stats.totalEntries) * 100 : 0;
@@ -303,7 +434,7 @@ export default function MoodStatsView() {
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
         <Ionicons name="hourglass" size={32} color="#3b82f6" />
         <Text style={{ color: "#9ca3af", marginTop: 10 }}>
-          Loading stats...
+          Loading {selectedPeriod} stats...
         </Text>
       </View>
     );

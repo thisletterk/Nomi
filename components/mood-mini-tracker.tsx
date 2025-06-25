@@ -66,7 +66,7 @@ export default function MoodMiniTracker({ onMoodSaved }: MoodMiniTrackerProps) {
       </Text>
 
       <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
-        {MOOD_TYPES.map((mood) => (
+        {MOOD_TYPES.slice(0, 5).map((mood) => (
           <TouchableOpacity
             key={mood.id}
             onPress={() => handleQuickMood(mood)}

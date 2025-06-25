@@ -65,11 +65,46 @@ export default function SignUpScreen() {
 
     setGoogleLoading(true);
     try {
-      const { createdSessionId, setActive: oauthSetActive } =
-        await startOAuthFlow();
+      const {
+        createdSessionId,
+        signIn,
+        signUp,
+        setActive: oauthSetActive,
+      } = await startOAuthFlow();
 
       if (createdSessionId && oauthSetActive) {
         await oauthSetActive({ session: createdSessionId });
+
+        // If this was a new user creation, create them in the database
+        if (signUp && signUp.createdUserId) {
+          console.log(
+            "New user created via Google OAuth:",
+            signUp.createdUserId
+          );
+
+          // Get user info from Clerk and create in database
+          try {
+            const response = await fetchAPI(`/(api)/user`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                firstname: signUp.firstName || "",
+                lastname: signUp.lastName || "",
+                username:
+                  signUp.username || signUp.emailAddress?.split("@")[0] || "",
+                email: signUp.emailAddress || "",
+                clerkId: signUp.createdUserId,
+              }),
+            });
+            console.log("OAuth user created in database:", response);
+          } catch (dbError) {
+            console.error("Failed to create OAuth user in DB:", dbError);
+            // Don't block the flow
+          }
+        }
+
         router.replace("/(root)/(tabs)/home");
       }
     } catch (error: any) {
