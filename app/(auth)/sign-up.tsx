@@ -59,6 +59,9 @@ export default function SignUpScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [pendingVerification, setPendingVerification] = useState(false);
+  // New state for date of birth and gender
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [gender, setGender] = useState("");
 
   const handleGoogleSignUp = async () => {
     if (!isLoaded) return;
@@ -96,6 +99,10 @@ export default function SignUpScreen() {
                   signUp.username || signUp.emailAddress?.split("@")[0] || "",
                 email: signUp.emailAddress || "",
                 clerkId: signUp.createdUserId,
+                // Include date of birth
+                date_of_birth: dateOfBirth || "",
+                // include gender
+                gender: gender || "",
               }),
             });
             console.log("OAuth user created in database:", response);
@@ -125,7 +132,11 @@ export default function SignUpScreen() {
       !firstName.trim() ||
       !lastName.trim() ||
       !email.trim() ||
-      !password.trim()
+      !password.trim() ||
+      !confirmPassword.trim() ||
+      !username.trim() ||
+      !dateOfBirth.trim() ||
+      !gender.trim()
     ) {
       Alert.alert("Error", "Please fill in all fields");
       return;
@@ -157,6 +168,7 @@ export default function SignUpScreen() {
         emailAddress: email.trim(),
         password: password,
         username: finalUsername,
+        // dateOfBirth and gender are not supported by Clerk API directly
       });
 
       await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
@@ -266,6 +278,8 @@ export default function SignUpScreen() {
           username: finalUsername,
           email: email.trim(),
           clerkId: clerkUserId,
+          date_of_birth: dateOfBirth.trim(),
+          gender: gender.trim(),
         }),
       });
 
@@ -575,6 +589,91 @@ export default function SignUpScreen() {
                 </View>
               </View>
 
+              {/* Date of Birth */}
+              <View style={{ marginBottom: 20 }}>
+                <Text
+                  style={{
+                    color: "#e5e7eb",
+                    fontSize: 16,
+                    fontWeight: "500",
+                    marginBottom: 8,
+                  }}
+                >
+                  Date of Birth
+                </Text>
+                <View
+                  style={{
+                    backgroundColor: "#374151",
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: "#4b5563",
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingHorizontal: 16,
+                  }}
+                >
+                  <Ionicons name="calendar" size={20} color="#9ca3af" />
+                  <TextInput
+                    value={dateOfBirth}
+                    onChangeText={setDateOfBirth}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor="#6b7280"
+                    keyboardType={
+                      Platform.OS === "ios"
+                        ? "numbers-and-punctuation"
+                        : "default"
+                    }
+                    style={{
+                      flex: 1,
+                      color: "#fff",
+                      fontSize: 16,
+                      paddingVertical: 16,
+                      paddingLeft: 12,
+                    }}
+                  />
+                </View>
+              </View>
+
+              {/* Gender */}
+              <View style={{ marginBottom: 20 }}>
+                <Text
+                  style={{
+                    color: "#e5e7eb",
+                    fontSize: 16,
+                    fontWeight: "500",
+                    marginBottom: 8,
+                  }}
+                >
+                  Gender
+                </Text>
+                <View
+                  style={{
+                    backgroundColor: "#374151",
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: "#4b5563",
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingHorizontal: 16,
+                  }}
+                >
+                  <Ionicons name="male-female" size={20} color="#9ca3af" />
+                  <TextInput
+                    value={gender}
+                    onChangeText={setGender}
+                    placeholder="Male, Female, Other, Prefer not to say"
+                    placeholderTextColor="#6b7280"
+                    style={{
+                      flex: 1,
+                      color: "#fff",
+                      fontSize: 16,
+                      paddingVertical: 16,
+                      paddingLeft: 12,
+                    }}
+                  />
+                </View>
+              </View>
+
               <View style={{ marginBottom: 20 }}>
                 <Text
                   style={{
@@ -770,7 +869,9 @@ export default function SignUpScreen() {
                 !lastName.trim() ||
                 !email.trim() ||
                 !password.trim() ||
-                !confirmPassword.trim()
+                !confirmPassword.trim() ||
+                !dateOfBirth.trim() ||
+                !gender.trim()
               }
               size="large"
             />

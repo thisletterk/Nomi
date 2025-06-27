@@ -30,6 +30,13 @@ interface ProfileStats {
   joinDate: string;
 }
 
+interface MoodSummary {
+  todaysMood: number | null;
+  weeklyAverage: number;
+  monthlyTrend: "up" | "down" | "stable";
+  lastEntry: string | null;
+}
+
 interface SettingItem {
   id: string;
   title: string;
@@ -47,6 +54,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState<ProfileStats | null>(null);
+  const [moodSummary, setMoodSummary] = useState<MoodSummary | null>(null);
   const [settings, setSettings] = useState({
     notifications: true,
     darkMode: true,
@@ -107,6 +115,60 @@ export default function ProfileScreen() {
           joinDate: user?.createdAt
             ? new Date(user.createdAt).toLocaleDateString()
             : "Recently",
+        });
+
+        // Load mood summary
+        const today = new Date().toISOString().split("T")[0];
+        const todaysMood = allMoods.find((mood) =>
+          mood.timestamp.toLocaleString().startsWith(today)
+        );
+
+        // Calculate weekly average
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        const weeklyMoods = allMoods.filter(
+          (mood) => new Date(mood.timestamp) >= weekAgo
+        );
+        const weeklyAverage =
+          weeklyMoods.length > 0
+            ? weeklyMoods.reduce((sum, mood) => sum + mood.mood.value, 0) /
+              weeklyMoods.length
+            : 0;
+
+        // Calculate monthly trend
+        const monthAgo = new Date();
+        monthAgo.setDate(monthAgo.getDate() - 30);
+        const monthlyMoods = allMoods.filter(
+          (mood) => new Date(mood.timestamp) >= monthAgo
+        );
+        const firstHalf = monthlyMoods.slice(
+          0,
+          Math.floor(monthlyMoods.length / 2)
+        );
+        const secondHalf = monthlyMoods.slice(
+          Math.floor(monthlyMoods.length / 2)
+        );
+
+        let trend: "up" | "down" | "stable" = "stable";
+        if (firstHalf.length > 0 && secondHalf.length > 0) {
+          const firstAvg =
+            firstHalf.reduce((sum, mood) => sum + mood.mood.value, 0) /
+            firstHalf.length;
+          const secondAvg =
+            secondHalf.reduce((sum, mood) => sum + mood.mood.value, 0) /
+            secondHalf.length;
+          const difference = secondAvg - firstAvg;
+          if (difference > 0.3) trend = "up";
+          else if (difference < -0.3) trend = "down";
+        }
+
+        setMoodSummary({
+          todaysMood: todaysMood?.mood.value || null,
+          weeklyAverage: Math.round(weeklyAverage * 10) / 10,
+          monthlyTrend: trend,
+          lastEntry: allMoods[0]?.timestamp
+            ? new Date(allMoods[0].timestamp).toLocaleDateString()
+            : null,
         });
       }
 
@@ -191,6 +253,36 @@ export default function ProfileScreen() {
         },
       ]
     );
+  };
+
+  const getMoodEmoji = (value: number) => {
+    if (value >= 4.5) return "😊";
+    if (value >= 3.5) return "🙂";
+    if (value >= 2.5) return "😐";
+    if (value >= 1.5) return "😔";
+    return "😢";
+  };
+
+  const getTrendIcon = (trend: "up" | "down" | "stable") => {
+    switch (trend) {
+      case "up":
+        return "trending-up";
+      case "down":
+        return "trending-down";
+      default:
+        return "remove";
+    }
+  };
+
+  const getTrendColor = (trend: "up" | "down" | "stable") => {
+    switch (trend) {
+      case "up":
+        return "#10b981";
+      case "down":
+        return "#ef4444";
+      default:
+        return "#6b7280";
+    }
   };
 
   const settingsData: SettingItem[] = [
@@ -298,6 +390,169 @@ export default function ProfileScreen() {
       </Text>
     </Animated.View>
   );
+
+  const renderMoodCard = () => {
+    if (!moodSummary) return null;
+
+    return (
+      <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+        <Text
+          style={{
+            color: "#fff",
+            fontSize: 18,
+            fontWeight: "bold",
+            marginBottom: 15,
+          }}
+        >
+          Mood Overview
+        </Text>
+        <View
+          style={{
+            backgroundColor: "#374151",
+            borderRadius: 20,
+            padding: 20,
+            borderWidth: 1,
+            borderColor: "#4b5563",
+          }}
+        >
+          {/* Today's Mood */}
+          <View style={{ marginBottom: 20 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <Text
+                style={{ color: "#9ca3af", fontSize: 14, fontWeight: "500" }}
+              >
+                Today's Mood
+              </Text>
+              {moodSummary.todaysMood ? (
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Text style={{ color: "#fff", fontSize: 24, marginRight: 8 }}>
+                    {getMoodEmoji(moodSummary.todaysMood)}
+                  </Text>
+                  <Text
+                    style={{ color: "#fff", fontSize: 18, fontWeight: "bold" }}
+                  >
+                    {moodSummary.todaysMood}/5
+                  </Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => router.push("/(root)/(tabs)/mood")}
+                  style={{
+                    backgroundColor: "#3b82f6",
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 12,
+                  }}
+                >
+                  <Text
+                    style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}
+                  >
+                    Log Mood
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {/* Weekly Average & Trend */}
+          <View
+            style={{ flexDirection: "row", justifyContent: "space-between" }}
+          >
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={{ color: "#9ca3af", fontSize: 12, marginBottom: 4 }}>
+                Weekly Average
+              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Text
+                  style={{
+                    color: "#10b981",
+                    fontSize: 16,
+                    fontWeight: "bold",
+                    marginRight: 4,
+                  }}
+                >
+                  {moodSummary.weeklyAverage}/5
+                </Text>
+                <Text style={{ color: "#fff", fontSize: 14 }}>
+                  {getMoodEmoji(moodSummary.weeklyAverage)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={{ color: "#9ca3af", fontSize: 12, marginBottom: 4 }}>
+                Monthly Trend
+              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Ionicons
+                  name={getTrendIcon(moodSummary.monthlyTrend) as any}
+                  size={16}
+                  color={getTrendColor(moodSummary.monthlyTrend)}
+                  style={{ marginRight: 4 }}
+                />
+                <Text
+                  style={{
+                    color: getTrendColor(moodSummary.monthlyTrend),
+                    fontSize: 14,
+                    fontWeight: "600",
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {moodSummary.monthlyTrend}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Last Entry */}
+          {moodSummary.lastEntry && (
+            <View
+              style={{
+                marginTop: 15,
+                paddingTop: 15,
+                borderTopWidth: 1,
+                borderTopColor: "#4b5563",
+              }}
+            >
+              <Text style={{ color: "#6b7280", fontSize: 12 }}>
+                Last entry: {moodSummary.lastEntry}
+              </Text>
+            </View>
+          )}
+
+          {/* Quick Action */}
+          <TouchableOpacity
+            onPress={() => router.push("/(root)/(tabs)/mood")}
+            style={{
+              backgroundColor: "#4b5563",
+              borderRadius: 12,
+              padding: 12,
+              marginTop: 15,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons
+              name="add-circle-outline"
+              size={16}
+              color="#9ca3af"
+              style={{ marginRight: 6 }}
+            />
+            <Text style={{ color: "#9ca3af", fontSize: 14, fontWeight: "500" }}>
+              Track Mood
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
 
   const renderStatsCards = () => {
     if (!stats) return null;
@@ -597,6 +852,7 @@ export default function ProfileScreen() {
           contentContainerStyle={{ paddingBottom: 100 }}
         >
           {renderProfileHeader()}
+          {renderMoodCard()}
           {renderStatsCards()}
           {renderSettings()}
           {renderDangerZone()}

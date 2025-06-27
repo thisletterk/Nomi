@@ -1,6 +1,5 @@
+import PushNotification from "react-native-push-notification";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Notifications from "expo-notifications";
-import { Platform } from "react-native";
 import { MoodDatabase } from "./mood-database";
 
 export interface MoodPrompt {
@@ -39,41 +38,32 @@ export const DEFAULT_PROMPTS: MoodPrompt[] = [
   },
 ];
 
+// Helper function to get next occurrence of a time
+function getNextOccurrence(hours: number, minutes: number): Date {
+  const now = new Date();
+  const scheduledTime = new Date();
+
+  scheduledTime.setHours(hours, minutes, 0, 0);
+
+  // If the time has already passed today, schedule for tomorrow
+  if (scheduledTime <= now) {
+    scheduledTime.setDate(scheduledTime.getDate() + 1);
+  }
+
+  return scheduledTime;
+}
+
 export class MoodPromptManager {
   private static STORAGE_KEY = "mood_prompts_settings";
   private static LAST_PROMPT_KEY = "last_mood_prompt";
+  private static LAST_NOTIFICATION_SCHEDULE_KEY = "last_notification_schedule";
 
   static async initializeNotifications(): Promise<boolean> {
     try {
-      const { status: existingStatus } =
-        await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-
-      if (existingStatus !== "granted") {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-
-      if (finalStatus !== "granted") {
-        console.log("❌ Notification permission denied");
-        return false;
-      }
-
-      // Configure notification behavior
-      await Notifications.setNotificationHandler({
-        handleNotification: async () => ({
-          shouldShowAlert: true,
-          shouldPlaySound: true,
-          shouldSetBadge: false,
-          shouldShowBanner: true,
-          shouldShowList: true,
-        }),
-      });
-
-      console.log("✅ Notifications initialized successfully");
+      console.log("✅ Mood notifications initialized successfully");
       return true;
     } catch (error) {
-      console.error("❌ Error initializing notifications:", error);
+      console.error("❌ Error initializing mood notifications:", error);
       return false;
     }
   }
@@ -103,60 +93,109 @@ export class MoodPromptManager {
 
   static async scheduleNotifications(prompts: MoodPrompt[]): Promise<void> {
     try {
-      // Cancel existing notifications
-      await Notifications.cancelAllScheduledNotificationsAsync();
+      // Check if we've already scheduled notifications today
+      const today = new Date().toDateString();
+      const lastScheduled = await AsyncStorage.getItem(
+        this.LAST_NOTIFICATION_SCHEDULE_KEY
+      );
+
+      if (lastScheduled === today) {
+        console.log("📅 Mood notifications already scheduled for today");
+        return;
+      }
+
+      // Cancel existing mood prompt notifications
+      await this.cancelMoodNotifications();
+
+      const scheduledCount = { morning: 0, afternoon: 0, evening: 0 };
 
       for (const prompt of prompts) {
-        if (!prompt.enabled) continue;
+        if (!prompt.enabled) {
+          console.log(`⏭️ Skipping disabled prompt: ${prompt.type}`);
+          continue;
+        }
 
         const [hours, minutes] = prompt.time.split(":").map(Number);
 
-        // Use different trigger types based on platform
-        let trigger: any;
-
-        if (Platform.OS === "ios") {
-          // iOS supports calendar triggers
-          trigger = {
-            hour: hours,
-            minute: minutes,
-            repeats: true,
-          };
-        } else {
-          // Android - schedule for next occurrence of this time
-          const now = new Date();
-          const scheduledTime = new Date();
-          scheduledTime.setHours(hours, minutes, 0, 0);
-
-          // If the time has passed today, schedule for tomorrow
-          if (scheduledTime <= now) {
-            scheduledTime.setDate(scheduledTime.getDate() + 1);
-          }
-
-          // Use daily repeat with proper interval
-          trigger = {
-            date: scheduledTime,
-            repeats: true,
-            repeatInterval: "day" as any, // Repeat daily
-          };
+        // Validate time format
+        if (
+          isNaN(hours) ||
+          isNaN(minutes) ||
+          hours < 0 ||
+          hours > 23 ||
+          minutes < 0 ||
+          minutes > 59
+        ) {
+          console.error(
+            `❌ Invalid time format for ${prompt.type}: ${prompt.time}`
+          );
+          continue;
         }
 
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: prompt.title,
-            body: prompt.message,
-            data: {
-              type: "mood_prompt",
-              promptId: prompt.id,
-              promptType: prompt.type,
-            },
+        // Get the next occurrence of this time
+        const nextOccurrence = getNextOccurrence(hours, minutes);
+        const now = new Date();
+        const minutesUntil =
+          (nextOccurrence.getTime() - now.getTime()) / (1000 * 60);
+
+        // Only schedule if it's more than 1 minute in the future
+        if (minutesUntil < 1) {
+          console.log(`⚠️ Skipping ${prompt.type} - too close to current time`);
+          continue;
+        }
+
+        console.log(`📅 Scheduling ${prompt.type} mood prompt:`);
+        console.log(`   - Time: ${prompt.time}`);
+        console.log(`   - Next occurrence: ${nextOccurrence.toLocaleString()}`);
+        console.log(`   - Minutes until: ${Math.round(minutesUntil)}`);
+
+        const notificationId = `mood_${prompt.type}`;
+
+        // Schedule daily repeating notification
+        PushNotification.localNotificationSchedule({
+          id: notificationId,
+          title: prompt.title,
+          message: prompt.message,
+          date: nextOccurrence,
+          repeatType: "day",
+          channelId: "wellness-reminders",
+          userInfo: {
+            type: "mood_prompt",
+            promptId: prompt.id,
+            promptType: prompt.type,
           },
-          trigger,
+          playSound: true,
+          soundName: "default",
+          vibrate: true,
+          vibration: 300,
         });
 
-        console.log(`📅 Scheduled ${prompt.type} prompt for ${prompt.time}`);
+        scheduledCount[prompt.type as keyof typeof scheduledCount]++;
+        console.log(
+          `✅ Scheduled ${prompt.type} mood prompt for ${prompt.time}`
+        );
       }
+
+      // Mark that we've scheduled notifications for today
+      await AsyncStorage.setItem(this.LAST_NOTIFICATION_SCHEDULE_KEY, today);
+
+      console.log(`📅 Scheduled mood notifications:`, scheduledCount);
     } catch (error) {
-      console.error("❌ Error scheduling notifications:", error);
+      console.error("❌ Error scheduling mood notifications:", error);
+    }
+  }
+
+  static async cancelMoodNotifications(): Promise<void> {
+    try {
+      // Cancel specific mood notification IDs
+      const moodTypes = ["morning", "afternoon", "evening"];
+      for (const type of moodTypes) {
+        PushNotification.cancelLocalNotification(`mood_${type}`);
+      }
+
+      console.log(`🧹 Cancelled mood prompt notifications`);
+    } catch (error) {
+      console.error("❌ Error canceling mood notifications:", error);
     }
   }
 
@@ -164,7 +203,6 @@ export class MoodPromptManager {
     userId: string
   ): Promise<MoodPrompt | null> {
     try {
-      const lastPromptStr = await AsyncStorage.getItem(this.LAST_PROMPT_KEY);
       const now = new Date();
       const today = now.toISOString().split("T")[0];
       const hour = now.getHours();
@@ -174,92 +212,73 @@ export class MoodPromptManager {
 
       // If they've already logged a mood today, don't show any prompts
       if (todaysMood) {
-        console.log("💭 User already logged mood today, skipping prompt");
+        console.log(
+          "💭 User already logged mood today, skipping in-app prompt"
+        );
         return null;
       }
 
-      // Parse last prompt data to be more specific
+      // Get last prompt data
+      const lastPromptStr = await AsyncStorage.getItem(this.LAST_PROMPT_KEY);
       let lastPromptData: {
         date: string;
         type: string;
         timestamp: number;
       } | null = null;
+
       if (lastPromptStr) {
         try {
           const parsed = JSON.parse(lastPromptStr);
           if (parsed.date && parsed.type && parsed.timestamp) {
             lastPromptData = parsed;
-          } else {
-            // Old format - just a timestamp
-            const timestamp = new Date(lastPromptStr).getTime();
-            if (!isNaN(timestamp)) {
-              lastPromptData = {
-                date: new Date(timestamp).toISOString().split("T")[0],
-                type: "unknown",
-                timestamp,
-              };
-            }
           }
         } catch (e) {
           console.log("Error parsing last prompt data:", e);
         }
       }
 
-      // Don't show prompts too frequently (minimum 3 hours between prompts)
+      // Don't show prompts too frequently (minimum 4 hours between prompts)
       if (
         lastPromptData &&
-        now.getTime() - lastPromptData.timestamp < 3 * 60 * 60 * 1000
+        now.getTime() - lastPromptData.timestamp < 4 * 60 * 60 * 1000
       ) {
-        console.log("💭 Too soon since last prompt, waiting...");
+        console.log("💭 Too soon since last in-app prompt, waiting...");
         return null;
       }
 
       // Don't show the same type of prompt twice in one day
       if (lastPromptData && lastPromptData.date === today) {
-        console.log(`💭 Already showed ${lastPromptData.type} prompt today`);
+        console.log(
+          `💭 Already showed ${lastPromptData.type} in-app prompt today`
+        );
         return null;
       }
 
       const prompts = await this.getPromptSettings();
 
-      // Determine which prompt to show based on time of day
+      // Determine which prompt to show based on time of day with stricter time windows
       let appropriatePrompt: MoodPrompt | null = null;
 
-      if (hour >= 6 && hour < 12) {
-        // Morning: 6 AM - 12 PM
+      if (hour >= 7 && hour <= 11) {
+        // Morning: 7 AM - 11 AM
         appropriatePrompt =
           prompts.find((p) => p.type === "morning" && p.enabled) || null;
-        // Don't show morning prompt after 10 AM unless it's early morning
-        if (hour > 10) {
-          console.log("💭 Too late for morning prompt");
-          return null;
-        }
-      } else if (hour >= 12 && hour < 17) {
-        // Afternoon: 12 PM - 5 PM
+      } else if (hour >= 13 && hour <= 16) {
+        // Afternoon: 1 PM - 4 PM
         appropriatePrompt =
           prompts.find((p) => p.type === "afternoon" && p.enabled) || null;
-        // Only show afternoon prompt between 1-4 PM
-        if (hour < 13 || hour > 16) {
-          console.log("💭 Not the right time for afternoon prompt");
-          return null;
-        }
-      } else if (hour >= 17 && hour < 22) {
-        // Evening: 5 PM - 10 PM
+      } else if (hour >= 18 && hour <= 21) {
+        // Evening: 6 PM - 9 PM
         appropriatePrompt =
           prompts.find((p) => p.type === "evening" && p.enabled) || null;
-        // Only show evening prompt between 6-9 PM
-        if (hour < 18 || hour > 21) {
-          console.log("💭 Not the right time for evening prompt");
-          return null;
-        }
       } else {
-        // Late night/early morning - no prompts
-        console.log("💭 Outside prompt hours (10 PM - 6 AM)");
+        // Outside prompt hours
+        console.log(`💭 Outside in-app prompt hours (current: ${hour}:00)`);
         return null;
       }
 
       if (appropriatePrompt) {
-        // Save the prompt data with more detail
+        // Save the prompt data
         const promptData = {
           date: today,
           type: appropriatePrompt.type,
@@ -270,7 +289,9 @@ export class MoodPromptManager {
           JSON.stringify(promptData)
         );
 
-        console.log(`💭 Showing ${appropriatePrompt.type} prompt for ${today}`);
+        console.log(
+          `💭 Showing ${appropriatePrompt.type} in-app prompt for ${today}`
+        );
         return appropriatePrompt;
       }
 
@@ -339,7 +360,9 @@ export class MoodPromptManager {
           if (parsed.date === today) {
             // Clear today's prompt history since user logged a mood
             await AsyncStorage.removeItem(this.LAST_PROMPT_KEY);
-            console.log("🧹 Cleared today's prompt history - user logged mood");
+            console.log(
+              "🧹 Cleared today's in-app prompt history - user logged mood"
+            );
           }
         } catch (e) {
           // Old format or invalid data, just clear it
@@ -348,6 +371,17 @@ export class MoodPromptManager {
       }
     } catch (error) {
       console.error("❌ Error clearing today's prompts:", error);
+    }
+  }
+
+  // Helper method to reset notification scheduling (for debugging)
+  static async resetNotificationSchedule(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(this.LAST_NOTIFICATION_SCHEDULE_KEY);
+      await this.cancelMoodNotifications();
+      console.log("🔄 Reset mood notification schedule");
+    } catch (error) {
+      console.error("❌ Error resetting notification schedule:", error);
     }
   }
 }

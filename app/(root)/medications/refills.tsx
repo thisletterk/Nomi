@@ -1,4 +1,6 @@
-import React, { useState, useCallback } from "react";
+"use client";
+
+import { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -12,8 +14,11 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from "@react-navigation/native";
-import { getMedications, Medication, updateMedication } from "@/utils/storage";
-import { scheduleRefillReminder } from "@/utils/notifications";
+import {
+  getMedications,
+  type Medication,
+  updateMedication,
+} from "@/utils/storage";
 
 export default function RefillTrackerScreen() {
   const router = useRouter();
@@ -46,12 +51,12 @@ export default function RefillTrackerScreen() {
       await loadMedications();
 
       Alert.alert(
-        "Refill Recorded",
-        `${medication.name} has been refilled to ${medication.totalSupply} units.`
+        "Great! 🎉",
+        `${medication.name} supply has been updated to ${medication.totalSupply} units.`
       );
     } catch (error) {
       console.error("Error recording refill:", error);
-      Alert.alert("Error", "Failed to record refill. Please try again.");
+      Alert.alert("Oops!", "Something went wrong. Please try again.");
     }
   };
 
@@ -60,21 +65,24 @@ export default function RefillTrackerScreen() {
       (medication.currentSupply / medication.totalSupply) * 100;
     if (percentage <= medication.refillAt) {
       return {
-        status: "Low",
-        color: "#F44336",
-        backgroundColor: "#FFEBEE",
+        status: "Time to Restock",
+        color: "#FF6B9D",
+        backgroundColor: "#FFF0F5",
+        emoji: "🔔",
       };
     } else if (percentage <= 50) {
       return {
-        status: "Medium",
-        color: "#FF9800",
-        backgroundColor: "#FFF3E0",
+        status: "Getting Low",
+        color: "#FFB74D",
+        backgroundColor: "#FFF8E1",
+        emoji: "⚠️",
       };
     } else {
       return {
-        status: "Good",
-        color: "#4CAF50",
-        backgroundColor: "#E8F5E9",
+        status: "Well Stocked",
+        color: "#4ECDC4",
+        backgroundColor: "#E0F7FA",
+        emoji: "✅",
       };
     }
   };
@@ -82,7 +90,7 @@ export default function RefillTrackerScreen() {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={["#1a8e2d", "#146922"]}
+        colors={["#667eea", "#764ba2"]}
         style={styles.headerGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
@@ -94,9 +102,9 @@ export default function RefillTrackerScreen() {
             onPress={() => router.back()}
             style={styles.backButton}
           >
-            <Ionicons name="chevron-back" size={28} color="#1a8e2d" />
+            <Ionicons name="chevron-back" size={28} color="#667eea" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Refill Tracker</Text>
+          <Text style={styles.headerTitle}>Care Reminders</Text>
         </View>
 
         <ScrollView
@@ -105,13 +113,16 @@ export default function RefillTrackerScreen() {
         >
           {medications.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="medical-outline" size={48} color="#ccc" />
-              <Text style={styles.emptyStateText}>No medications to track</Text>
+              <Text style={styles.emptyStateEmoji}>💝</Text>
+              <Text style={styles.emptyStateText}>No items to track yet</Text>
+              <Text style={styles.emptyStateSubText}>
+                Add wellness items to keep track of your supplies
+              </Text>
               <TouchableOpacity
                 style={styles.addButton}
                 onPress={() => router.push("/(root)/medications/add")}
               >
-                <Text style={styles.addButtonText}>Add Medication</Text>
+                <Text style={styles.addButtonText}>Add Wellness Item</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -143,6 +154,9 @@ export default function RefillTrackerScreen() {
                         { backgroundColor: supplyStatus.backgroundColor },
                       ]}
                     >
+                      <Text style={styles.statusEmoji}>
+                        {supplyStatus.emoji}
+                      </Text>
                       <Text
                         style={[
                           styles.statusText,
@@ -158,7 +172,7 @@ export default function RefillTrackerScreen() {
                     <View style={styles.supplyInfo}>
                       <Text style={styles.supplyLabel}>Current Supply</Text>
                       <Text style={styles.supplyValue}>
-                        {medication.currentSupply} units
+                        {medication.currentSupply} units remaining
                       </Text>
                     </View>
                     <View style={styles.progressBarContainer}>
@@ -167,23 +181,23 @@ export default function RefillTrackerScreen() {
                           style={[
                             styles.progressBar,
                             {
-                              width: `${supplyPercentage}%`,
+                              width: `${Math.max(supplyPercentage, 5)}%`,
                               backgroundColor: supplyStatus.color,
                             },
                           ]}
                         />
                       </View>
                       <Text style={styles.progressText}>
-                        {Math.round(supplyPercentage)}%
+                        {Math.round(supplyPercentage)}% remaining
                       </Text>
                     </View>
                     <View style={styles.refillInfo}>
                       <Text style={styles.refillLabel}>
-                        Refill at: {medication.refillAt}%
+                        📍 Reminder set at {medication.refillAt}% remaining
                       </Text>
                       {medication.lastRefillDate && (
                         <Text style={styles.lastRefillDate}>
-                          Last refill:{" "}
+                          Last restocked:{" "}
                           {new Date(
                             medication.lastRefillDate
                           ).toLocaleDateString()}
@@ -197,13 +211,25 @@ export default function RefillTrackerScreen() {
                       styles.refillButton,
                       {
                         backgroundColor:
-                          supplyPercentage < 100 ? medication.color : "#e0e0e0",
+                          supplyPercentage < 100 ? medication.color : "#E5E5EA",
                       },
                     ]}
                     onPress={() => handleRefill(medication)}
                     disabled={supplyPercentage >= 100}
                   >
-                    <Text style={styles.refillButtonText}>Record Refill</Text>
+                    <Ionicons
+                      name="add-circle-outline"
+                      size={20}
+                      color={supplyPercentage < 100 ? "white" : "#8E8E93"}
+                    />
+                    <Text
+                      style={[
+                        styles.refillButtonText,
+                        { color: supplyPercentage < 100 ? "white" : "#8E8E93" },
+                      ]}
+                    >
+                      Mark as Restocked
+                    </Text>
                   </TouchableOpacity>
                 </View>
               );
@@ -218,7 +244,7 @@ export default function RefillTrackerScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8f9fa",
+    backgroundColor: "#F2F2F7",
   },
   headerGradient: {
     position: "absolute",
@@ -263,25 +289,25 @@ const styles = StyleSheet.create({
   },
   medicationCard: {
     backgroundColor: "white",
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 20,
+    padding: 20,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#e0e0e0",
+    borderColor: "#F2F2F7",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
   },
   medicationHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 20,
   },
   medicationColor: {
     width: 12,
-    height: 40,
+    height: 44,
     borderRadius: 6,
     marginRight: 16,
   },
@@ -289,104 +315,129 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   medicationName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1C1C1E",
     marginBottom: 4,
   },
   medicationDosage: {
-    fontSize: 14,
-    color: "#666",
+    fontSize: 15,
+    color: "#8E8E93",
+    fontWeight: "500",
   },
   statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  statusEmoji: {
+    fontSize: 16,
+    marginRight: 6,
   },
   statusText: {
     fontSize: 14,
     fontWeight: "600",
   },
   supplyContainer: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   supplyInfo: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 12,
   },
   supplyLabel: {
-    fontSize: 14,
-    color: "#666",
+    fontSize: 15,
+    color: "#8E8E93",
+    fontWeight: "500",
   },
   supplyValue: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "600",
-    color: "#333",
+    color: "#1C1C1E",
   },
   progressBarContainer: {
-    marginBottom: 8,
+    marginBottom: 12,
   },
   progressBarBackground: {
-    height: 8,
-    backgroundColor: "#f5f5f5",
-    borderRadius: 4,
+    height: 10,
+    backgroundColor: "#F2F2F7",
+    borderRadius: 5,
     overflow: "hidden",
   },
   progressBar: {
     height: "100%",
-    borderRadius: 4,
+    borderRadius: 5,
   },
   progressText: {
-    fontSize: 12,
-    color: "#666",
-    marginTop: 4,
+    fontSize: 13,
+    color: "#8E8E93",
+    marginTop: 6,
     textAlign: "right",
+    fontWeight: "500",
   },
   refillInfo: {
-    marginTop: 8,
+    marginTop: 12,
   },
   refillLabel: {
-    fontSize: 12,
-    color: "#666",
+    fontSize: 13,
+    color: "#8E8E93",
+    fontWeight: "500",
   },
   lastRefillDate: {
-    fontSize: 12,
-    color: "#666",
-    marginTop: 2,
+    fontSize: 13,
+    color: "#C7C7CC",
+    marginTop: 4,
   },
   refillButton: {
-    paddingVertical: 12,
-    borderRadius: 12,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 16,
+    gap: 8,
   },
   refillButtonText: {
-    color: "white",
     fontSize: 16,
     fontWeight: "600",
   },
   emptyState: {
     alignItems: "center",
-    padding: 30,
+    padding: 40,
     backgroundColor: "white",
-    borderRadius: 16,
+    borderRadius: 20,
     marginTop: 20,
   },
+  emptyStateEmoji: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
   emptyStateText: {
-    fontSize: 16,
-    color: "#666",
-    marginTop: 10,
-    marginBottom: 20,
+    fontSize: 18,
+    color: "#8E8E93",
+    fontWeight: "600",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  emptyStateSubText: {
+    fontSize: 15,
+    color: "#C7C7CC",
+    textAlign: "center",
+    marginBottom: 25,
+    lineHeight: 22,
   },
   addButton: {
-    backgroundColor: "#1a8e2d",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    backgroundColor: "#667eea",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
     borderRadius: 20,
   },
   addButtonText: {
     color: "white",
     fontWeight: "600",
+    fontSize: 16,
   },
 });

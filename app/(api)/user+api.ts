@@ -3,10 +3,25 @@ import { neon } from "@neondatabase/serverless";
 export async function POST(request: Request) {
   try {
     const sql = neon(`${process.env.EXPO_PUBLIC_DATABASE_URL}`);
-    const { firstname, lastname, username, email, clerkId } =
-      await request.json();
+    const {
+      firstname,
+      lastname,
+      username,
+      email,
+      clerkId,
+      date_of_birth,
+      gender,
+    } = await request.json();
 
-    if (!firstname || !lastname || !username || !email || !clerkId) {
+    if (
+      !firstname ||
+      !lastname ||
+      !username ||
+      !email ||
+      !clerkId ||
+      !date_of_birth ||
+      !gender
+    ) {
       return Response.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -19,14 +34,18 @@ export async function POST(request: Request) {
         lastname,
         username, 
         email, 
-        clerk_id
+        clerk_id,
+        date_of_birth,
+        gender
       ) 
       VALUES (
         ${firstname},
         ${lastname},
         ${username}, 
         ${email},
-        ${clerkId}
+        ${clerkId},
+        ${date_of_birth},
+        ${gender}
       )
       ON CONFLICT (clerk_id) DO NOTHING;`;
 

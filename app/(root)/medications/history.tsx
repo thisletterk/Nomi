@@ -1,4 +1,6 @@
-import React, { useState, useCallback } from "react";
+"use client";
+
+import { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -15,8 +17,8 @@ import { useFocusEffect } from "@react-navigation/native";
 import {
   getDoseHistory,
   getMedications,
-  DoseHistory,
-  Medication,
+  type DoseHistory,
+  type Medication,
   clearAllData,
 } from "@/utils/storage";
 
@@ -83,24 +85,27 @@ export default function HistoryScreen() {
 
   const handleClearAllData = () => {
     Alert.alert(
-      "Clear All Data",
-      "Are you sure you want to clear all medication data? This action cannot be undone.",
+      "Clear Your Journey? 🤔",
+      "This will remove all your wellness data. Are you sure you want to start fresh?",
       [
         {
-          text: "Cancel",
+          text: "Keep My Data",
           style: "cancel",
         },
         {
-          text: "Clear All",
+          text: "Start Fresh",
           style: "destructive",
           onPress: async () => {
             try {
               await clearAllData();
               await loadHistory();
-              Alert.alert("Success", "All data has been cleared successfully");
+              Alert.alert(
+                "All Set! ✨",
+                "Your wellness journey starts fresh from today"
+              );
             } catch (error) {
               console.error("Error clearing data:", error);
-              Alert.alert("Error", "Failed to clear data. Please try again.");
+              Alert.alert("Oops!", "Something went wrong. Please try again.");
             }
           },
         },
@@ -108,10 +113,20 @@ export default function HistoryScreen() {
     );
   };
 
+  const getFilterStats = () => {
+    const total = history.length;
+    const completed = history.filter((dose) => dose.taken).length;
+    const missed = total - completed;
+
+    return { total, completed, missed };
+  };
+
+  const stats = getFilterStats();
+
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={["#1a8e2d", "#146922"]}
+        colors={["#667eea", "#764ba2"]}
         style={styles.headerGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
@@ -123,9 +138,29 @@ export default function HistoryScreen() {
             onPress={() => router.back()}
             style={styles.backButton}
           >
-            <Ionicons name="chevron-back" size={28} color="#1a8e2d" />
+            <Ionicons name="chevron-back" size={28} color="#667eea" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>History Log</Text>
+          <Text style={styles.headerTitle}>Progress Journey</Text>
+        </View>
+
+        <View style={styles.statsContainer}>
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>{stats.completed}</Text>
+            <Text style={styles.statLabel}>Completed</Text>
+            <Text style={styles.statEmoji}>🎉</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>{stats.total}</Text>
+            <Text style={styles.statLabel}>Total</Text>
+            <Text style={styles.statEmoji}>📊</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>
+              {Math.round((stats.completed / Math.max(stats.total, 1)) * 100)}%
+            </Text>
+            <Text style={styles.statLabel}>Success Rate</Text>
+            <Text style={styles.statEmoji}>⭐</Text>
+          </View>
         </View>
 
         <View style={styles.filtersContainer}>
@@ -147,7 +182,7 @@ export default function HistoryScreen() {
                   selectedFilter === "all" && styles.filterTextActive,
                 ]}
               >
-                All
+                All Activities
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -163,7 +198,7 @@ export default function HistoryScreen() {
                   selectedFilter === "taken" && styles.filterTextActive,
                 ]}
               >
-                Taken
+                Completed ✨
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -179,7 +214,7 @@ export default function HistoryScreen() {
                   selectedFilter === "missed" && styles.filterTextActive,
                 ]}
               >
-                Missed
+                Missed 💭
               </Text>
             </TouchableOpacity>
           </ScrollView>
@@ -189,84 +224,105 @@ export default function HistoryScreen() {
           style={styles.historyContainer}
           showsVerticalScrollIndicator={false}
         >
-          {groupedHistory.map(([date, doses]) => (
-            <View key={date} style={styles.dateGroup}>
-              <Text style={styles.dateHeader}>
-                {new Date(date).toLocaleDateString("default", {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                })}
+          {groupedHistory.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateEmoji}>🌱</Text>
+              <Text style={styles.emptyStateText}>
+                Your journey starts here
               </Text>
-              {doses.map((dose) => (
-                <View key={dose.id} style={styles.historyCard}>
-                  <View
-                    style={[
-                      styles.medicationColor,
-                      { backgroundColor: dose.medication?.color || "#ccc" },
-                    ]}
-                  />
-                  <View style={styles.medicationInfo}>
-                    <Text style={styles.medicationName}>
-                      {dose.medication?.name || "Unknown Medication"}
-                    </Text>
-                    <Text style={styles.medicationDosage}>
-                      {dose.medication?.dosage}
-                    </Text>
-                    <Text style={styles.timeText}>
-                      {new Date(dose.timestamp).toLocaleTimeString("default", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </Text>
-                  </View>
-                  <View style={styles.statusContainer}>
-                    {dose.taken ? (
-                      <View
-                        style={[
-                          styles.statusBadge,
-                          { backgroundColor: "#E8F5E9" },
-                        ]}
-                      >
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={16}
-                          color="#4CAF50"
-                        />
-                        <Text style={[styles.statusText, { color: "#4CAF50" }]}>
-                          Taken
-                        </Text>
-                      </View>
-                    ) : (
-                      <View
-                        style={[
-                          styles.statusBadge,
-                          { backgroundColor: "#FFEBEE" },
-                        ]}
-                      >
-                        <Ionicons
-                          name="close-circle"
-                          size={16}
-                          color="#F44336"
-                        />
-                        <Text style={[styles.statusText, { color: "#F44336" }]}>
-                          Missed
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              ))}
+              <Text style={styles.emptyStateSubText}>
+                Complete your first wellness activity to see your progress
+              </Text>
             </View>
-          ))}
+          ) : (
+            groupedHistory.map(([date, doses]) => (
+              <View key={date} style={styles.dateGroup}>
+                <Text style={styles.dateHeader}>
+                  {new Date(date).toLocaleDateString("default", {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </Text>
+                {doses.map((dose) => (
+                  <View key={dose.id} style={styles.historyCard}>
+                    <View
+                      style={[
+                        styles.medicationColor,
+                        {
+                          backgroundColor: dose.medication?.color || "#C7C7CC",
+                        },
+                      ]}
+                    />
+                    <View style={styles.medicationInfo}>
+                      <Text style={styles.medicationName}>
+                        {dose.medication?.name || "Unknown Item"}
+                      </Text>
+                      <Text style={styles.medicationDosage}>
+                        {dose.medication?.dosage}
+                      </Text>
+                      <Text style={styles.timeText}>
+                        {new Date(dose.timestamp).toLocaleTimeString(
+                          "default",
+                          {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          }
+                        )}
+                      </Text>
+                    </View>
+                    <View style={styles.statusContainer}>
+                      {dose.taken ? (
+                        <View
+                          style={[
+                            styles.statusBadge,
+                            { backgroundColor: "#E8F5E9" },
+                          ]}
+                        >
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={16}
+                            color="#34C759"
+                          />
+                          <Text
+                            style={[styles.statusText, { color: "#34C759" }]}
+                          >
+                            Done
+                          </Text>
+                        </View>
+                      ) : (
+                        <View
+                          style={[
+                            styles.statusBadge,
+                            { backgroundColor: "#FFF3E0" },
+                          ]}
+                        >
+                          <Ionicons
+                            name="time-outline"
+                            size={16}
+                            color="#FF9800"
+                          />
+                          <Text
+                            style={[styles.statusText, { color: "#FF9800" }]}
+                          >
+                            Skipped
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ))
+          )}
 
           <View style={styles.clearDataContainer}>
             <TouchableOpacity
               style={styles.clearDataButton}
               onPress={handleClearAllData}
             >
-              <Ionicons name="trash-outline" size={20} color="#FF5252" />
-              <Text style={styles.clearDataText}>Clear All Data</Text>
+              <Ionicons name="refresh-outline" size={20} color="#FF6B9D" />
+              <Text style={styles.clearDataText}>Start Fresh</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -278,7 +334,7 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8f9fa",
+    backgroundColor: "#F2F2F7",
   },
   headerGradient: {
     position: "absolute",
@@ -317,10 +373,43 @@ const styles = StyleSheet.create({
     color: "white",
     marginLeft: 15,
   },
+  statsContainer: {
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    marginBottom: 20,
+    gap: 12,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: "white",
+    borderRadius: 18,
+    padding: 16,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#1C1C1E",
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 13,
+    color: "#8E8E93",
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  statEmoji: {
+    fontSize: 20,
+  },
   filtersContainer: {
     paddingHorizontal: 20,
     marginBottom: 20,
-    backgroundColor: "#f8f9fa",
+    backgroundColor: "#F2F2F7",
     paddingTop: 10,
   },
   filtersScroll: {
@@ -328,21 +417,21 @@ const styles = StyleSheet.create({
   },
   filterButton: {
     paddingHorizontal: 20,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 20,
     backgroundColor: "white",
-    marginRight: 10,
+    marginRight: 12,
     borderWidth: 1,
-    borderColor: "#e0e0e0",
+    borderColor: "#F2F2F7",
   },
   filterButtonActive: {
-    backgroundColor: "#1a8e2d",
-    borderColor: "#1a8e2d",
+    backgroundColor: "#667eea",
+    borderColor: "#667eea",
   },
   filterText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "600",
-    color: "#666",
+    color: "#8E8E93",
   },
   filterTextActive: {
     color: "white",
@@ -350,26 +439,26 @@ const styles = StyleSheet.create({
   historyContainer: {
     flex: 1,
     paddingHorizontal: 20,
-    backgroundColor: "#f8f9fa",
+    backgroundColor: "#F2F2F7",
   },
   dateGroup: {
-    marginBottom: 25,
+    marginBottom: 28,
   },
   dateHeader: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#666",
-    marginBottom: 12,
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#1C1C1E",
+    marginBottom: 14,
   },
   historyCard: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "white",
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#e0e0e0",
+    borderColor: "#F2F2F7",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -378,7 +467,7 @@ const styles = StyleSheet.create({
   },
   medicationColor: {
     width: 12,
-    height: 40,
+    height: 44,
     borderRadius: 6,
     marginRight: 16,
   },
@@ -386,19 +475,20 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   medicationName: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "600",
-    color: "#333",
+    color: "#1C1C1E",
     marginBottom: 4,
   },
   medicationDosage: {
     fontSize: 14,
-    color: "#666",
+    color: "#8E8E93",
     marginBottom: 2,
   },
   timeText: {
     fontSize: 14,
-    color: "#666",
+    color: "#8E8E93",
+    fontWeight: "500",
   },
   statusContainer: {
     alignItems: "flex-end",
@@ -424,17 +514,41 @@ const styles = StyleSheet.create({
   clearDataButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFEBEE",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
+    backgroundColor: "#FFF0F5",
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#FFCDD2",
+    borderColor: "#FFE4E1",
   },
   clearDataText: {
-    color: "#FF5252",
+    color: "#FF6B9D",
     fontSize: 16,
     fontWeight: "600",
     marginLeft: 8,
+  },
+  emptyState: {
+    alignItems: "center",
+    padding: 40,
+    backgroundColor: "white",
+    borderRadius: 20,
+    marginTop: 20,
+  },
+  emptyStateEmoji: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    color: "#8E8E93",
+    fontWeight: "600",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  emptyStateSubText: {
+    fontSize: 15,
+    color: "#C7C7CC",
+    textAlign: "center",
+    lineHeight: 22,
   },
 });
